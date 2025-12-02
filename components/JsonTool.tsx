@@ -1,5 +1,7 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { CopyIcon, CheckIcon, TrashIcon, MinimizeIcon, FileJsonIcon, PlusCircleIcon, MinusCircleIcon } from './Icons';
+import { Language } from '../types';
+import { translations } from '../i18n';
 
 interface JsonNodeProps {
   name?: string;
@@ -137,13 +139,19 @@ const JsonNode: React.FC<JsonNodeProps> = ({
 
 
 // --- Main Tool Component ---
-export const JsonTool: React.FC = () => {
+interface JsonToolProps {
+  lang: Language;
+}
+
+export const JsonTool: React.FC<JsonToolProps> = ({ lang }) => {
   const [jsonInput, setJsonInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
+
+  const t = translations[lang].json;
 
   // Sync scroll between textarea and pre highlight layer
   const handleScroll = () => {
@@ -167,7 +175,7 @@ export const JsonTool: React.FC = () => {
       if (e instanceof Error) {
         setError(e.message);
       } else {
-        setError("Invalid JSON");
+        setError(t.invalidJson);
       }
     }
   };
@@ -229,7 +237,7 @@ export const JsonTool: React.FC = () => {
             <div className="text-sky-400 p-1.5 bg-sky-900/30 rounded-md">
               <FileJsonIcon className="w-5 h-5"/>
             </div>
-            <span className="font-semibold text-slate-200">JSON Editor & Viewer</span>
+            <span className="font-semibold text-slate-200">{t.title}</span>
         </div>
         
         <div className="flex gap-2">
@@ -237,28 +245,28 @@ export const JsonTool: React.FC = () => {
              onClick={() => formatJson(false)}
              className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-md transition-colors shadow-sm"
            >
-             Beautify
+             {t.beautify}
            </button>
            <button 
              onClick={() => formatJson(true)}
              className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium rounded-md transition-colors flex items-center gap-2"
            >
              <MinimizeIcon className="w-4 h-4"/>
-             Minify
+             {t.minify}
            </button>
            <button 
              onClick={copyToClipboard}
              className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium rounded-md transition-colors flex items-center gap-2"
            >
              {copied ? <CheckIcon className="w-4 h-4 text-green-400"/> : <CopyIcon className="w-4 h-4"/>}
-             Copy
+             {t.copy}
            </button>
            <button 
              onClick={clearInput}
              className="px-3 py-1.5 bg-red-900/30 hover:bg-red-900/50 border border-red-900/50 text-red-400 text-sm font-medium rounded-md transition-colors flex items-center gap-2"
            >
              <TrashIcon className="w-4 h-4"/>
-             Clear
+             {t.clear}
            </button>
         </div>
       </div>
@@ -302,7 +310,7 @@ export const JsonTool: React.FC = () => {
                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                     </div>
                     <div className="flex-1">
-                        <h4 className="font-semibold text-sm">JSON Parse Error</h4>
+                        <h4 className="font-semibold text-sm">{t.parseError}</h4>
                         <p className="text-xs font-mono mt-1 opacity-90">{error}</p>
                     </div>
                 </div>
@@ -311,7 +319,7 @@ export const JsonTool: React.FC = () => {
             {/* Stats */}
             {!error && jsonInput && (
                  <div className="absolute bottom-2 right-4 text-xs text-slate-500 bg-slate-900/90 px-2 py-1 rounded border border-slate-800 z-20 backdrop-blur-sm shadow-sm pointer-events-none">
-                    Length: {jsonInput.length} chars
+                    {t.length}: {jsonInput.length} {t.chars}
                  </div>
             )}
          </div>
@@ -327,7 +335,7 @@ export const JsonTool: React.FC = () => {
                   <div className="p-4 bg-slate-800/50 rounded-full">
                     <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
                   </div>
-                  <div className="text-sm font-medium">Valid JSON will appear here as a tree</div>
+                  <div className="text-sm font-medium">{t.validJsonMsg}</div>
                </div>
             )}
          </div>

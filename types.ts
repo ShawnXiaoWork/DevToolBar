@@ -1,11 +1,10 @@
 import React from 'react';
 
 export type ToolId = 'timestamp' | 'json';
+export type Language = 'en' | 'zh';
 
 export interface ToolConfig {
   id: ToolId;
-  name: string;
-  description: string;
   icon: React.ReactNode;
 }
 

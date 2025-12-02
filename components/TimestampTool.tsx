@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowRightLeftIcon, CopyIcon, CheckIcon } from './Icons';
+import { Language } from '../types';
+import { translations } from '../i18n';
 
-export const TimestampTool: React.FC = () => {
+interface TimestampToolProps {
+  lang: Language;
+}
+
+export const TimestampTool: React.FC<TimestampToolProps> = ({ lang }) => {
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [isPaused, setIsPaused] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -11,6 +17,9 @@ export const TimestampTool: React.FC = () => {
   const [inputType, setInputType] = useState<'timestamp' | 'date'>('timestamp');
   const [unit, setUnit] = useState<'s' | 'ms'>('s');
   const [result, setResult] = useState<string>('');
+
+  const t = translations[lang].timestamp;
+  const locale = lang === 'zh' ? 'zh-CN' : 'en-US';
 
   useEffect(() => {
     if (isPaused) return;
@@ -41,7 +50,7 @@ export const TimestampTool: React.FC = () => {
         
         const date = new Date(ts);
         if (isNaN(date.getTime())) throw new Error('Invalid Date');
-        setResult(date.toLocaleString() + ` (ISO: ${date.toISOString()})`);
+        setResult(date.toLocaleString(locale) + ` (ISO: ${date.toISOString()})`);
       } else {
         const date = new Date(inputVal);
         if (isNaN(date.getTime())) throw new Error('Invalid Format');
@@ -51,7 +60,7 @@ export const TimestampTool: React.FC = () => {
         setResult(ts.toString());
       }
     } catch (e) {
-      setResult('Invalid Input');
+      setResult(t.invalidInput);
     }
   };
 
@@ -59,7 +68,7 @@ export const TimestampTool: React.FC = () => {
   useEffect(() => {
     handleConvert();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inputVal, inputType, unit]);
+  }, [inputVal, inputType, unit, lang]);
 
   const nowTsMs = currentDate.getTime();
   const nowTsS = Math.floor(nowTsMs / 1000);
@@ -70,19 +79,19 @@ export const TimestampTool: React.FC = () => {
       <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 shadow-lg">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold text-sky-400 flex items-center gap-2">
-            Current Time
+            {t.currentTime}
             <button 
               onClick={() => setIsPaused(!isPaused)}
               className={`text-xs px-2 py-0.5 rounded-full border ${isPaused ? 'border-yellow-500 text-yellow-500' : 'border-green-500 text-green-500'} hover:bg-slate-700 transition-colors`}
             >
-              {isPaused ? 'PAUSED' : 'LIVE'}
+              {isPaused ? t.paused : t.live}
             </button>
           </h2>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700/50 relative group">
-            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Unix Timestamp (s)</span>
+            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">{t.unixSec}</span>
             <div className="text-2xl font-mono text-white mt-1">{nowTsS}</div>
             <button 
               onClick={() => copyToClipboard(nowTsS.toString(), 'nowS')}
@@ -93,7 +102,7 @@ export const TimestampTool: React.FC = () => {
           </div>
 
           <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700/50 relative group">
-            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Unix Timestamp (ms)</span>
+            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">{t.unixMs}</span>
             <div className="text-2xl font-mono text-white mt-1">{nowTsMs}</div>
             <button 
               onClick={() => copyToClipboard(nowTsMs.toString(), 'nowMs')}
@@ -104,12 +113,12 @@ export const TimestampTool: React.FC = () => {
           </div>
 
           <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700/50 relative group">
-            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Formatted</span>
+            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">{t.formatted}</span>
             <div className="text-sm font-mono text-white mt-2 leading-relaxed">
-              {currentDate.toLocaleString()}
+              {currentDate.toLocaleString(locale)}
             </div>
              <button 
-              onClick={() => copyToClipboard(currentDate.toLocaleString(), 'nowDate')}
+              onClick={() => copyToClipboard(currentDate.toLocaleString(locale), 'nowDate')}
               className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
             >
               {copiedField === 'nowDate' ? <CheckIcon className="w-4 h-4 text-green-500" /> : <CopyIcon className="w-4 h-4" />}
@@ -120,7 +129,7 @@ export const TimestampTool: React.FC = () => {
 
       {/* Converter Section */}
       <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 shadow-lg">
-        <h2 className="text-xl font-semibold text-white mb-6">Converter</h2>
+        <h2 className="text-xl font-semibold text-white mb-6">{t.converter}</h2>
         
         <div className="flex flex-col md:flex-row gap-4 items-stretch">
           
@@ -131,13 +140,13 @@ export const TimestampTool: React.FC = () => {
                   onClick={() => { setInputType('timestamp'); setInputVal(''); }}
                   className={`flex-1 py-2 text-sm rounded-md font-medium transition-colors ${inputType === 'timestamp' ? 'bg-sky-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
                 >
-                  Timestamp
+                  {t.timestampInput}
                 </button>
                 <button 
                   onClick={() => { setInputType('date'); setInputVal(''); }}
                   className={`flex-1 py-2 text-sm rounded-md font-medium transition-colors ${inputType === 'date' ? 'bg-sky-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
                 >
-                  Date String
+                  {t.dateInput}
                 </button>
              </div>
 
@@ -146,20 +155,20 @@ export const TimestampTool: React.FC = () => {
                   type="text"
                   value={inputVal}
                   onChange={(e) => setInputVal(e.target.value)}
-                  placeholder={inputType === 'timestamp' ? "e.g., 1678888888" : "e.g., 2023-03-15 10:00:00"}
+                  placeholder={inputType === 'timestamp' ? t.placeholderTimestamp : t.placeholderDate}
                   className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono"
                 />
              </div>
              
              <div className="flex gap-4 items-center">
-                <span className="text-sm text-slate-400">Unit:</span>
+                <span className="text-sm text-slate-400">{t.unit}</span>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" name="unit" checked={unit === 's'} onChange={() => setUnit('s')} className="text-sky-500 focus:ring-sky-500 bg-slate-700 border-slate-600" />
-                  <span className="text-sm text-slate-300">Seconds</span>
+                  <span className="text-sm text-slate-300">{t.seconds}</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" name="unit" checked={unit === 'ms'} onChange={() => setUnit('ms')} className="text-sky-500 focus:ring-sky-500 bg-slate-700 border-slate-600" />
-                  <span className="text-sm text-slate-300">Milliseconds</span>
+                  <span className="text-sm text-slate-300">{t.milliseconds}</span>
                 </label>
              </div>
           </div>
@@ -173,20 +182,20 @@ export const TimestampTool: React.FC = () => {
           <div className="flex-1 space-y-3">
              <div className="bg-slate-900/80 rounded-lg border border-slate-600 h-full p-4 flex flex-col justify-between min-h-[140px]">
                 <div>
-                   <span className="text-xs text-slate-500 uppercase font-bold block mb-2">Result</span>
+                   <span className="text-xs text-slate-500 uppercase font-bold block mb-2">{t.result}</span>
                    <div className="text-white font-mono break-all whitespace-pre-wrap">
-                      {result || <span className="text-slate-600 italic">Waiting for input...</span>}
+                      {result || <span className="text-slate-600 italic">{t.waiting}</span>}
                    </div>
                 </div>
                 
-                {result && result !== 'Invalid Input' && (
+                {result && result !== t.invalidInput && (
                   <div className="flex justify-end mt-4">
                      <button 
                         onClick={() => copyToClipboard(result, 'result')}
                         className="flex items-center gap-2 text-xs font-medium bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white px-3 py-1.5 rounded-md transition-all"
                       >
                         {copiedField === 'result' ? <CheckIcon className="w-3 h-3 text-green-500" /> : <CopyIcon className="w-3 h-3" />}
-                        {copiedField === 'result' ? 'Copied' : 'Copy'}
+                        {copiedField === 'result' ? t.copied : t.copy}
                      </button>
                   </div>
                 )}
