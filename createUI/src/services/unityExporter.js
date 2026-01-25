@@ -64,35 +64,6 @@ const buildHierarchy = (elements) => {
 /**
  * Determine anchor type for root-level elements
  */
-const determineAnchor = (element, canvasWidth, canvasHeight) => {
-    const x = element.x;
-    const y = element.y;
-    const w = element.width;
-    const h = element.height;
-    const right = canvasWidth - (x + w);
-    const bottom = canvasHeight - (y + h);
-
-    const threshold = 100;
-
-    const nearLeft = x < threshold;
-    const nearRight = right < threshold;
-    const nearTop = y < threshold;
-    const nearBottom = bottom < threshold;
-
-    if (nearLeft && nearTop) return { anchor: 'top-left', left: x, top: y };
-    if (nearRight && nearTop) return { anchor: 'top-right', right: right, top: y };
-    if (nearLeft && nearBottom) return { anchor: 'bottom-left', left: x, bottom: bottom };
-    if (nearRight && nearBottom) return { anchor: 'bottom-right', right: right, bottom: bottom };
-
-    // Default based on which edge is closer
-    if (nearLeft) return { anchor: 'top-left', left: x, top: y };
-    if (nearRight) return { anchor: 'top-right', right: right, top: y };
-    if (nearTop) return { anchor: 'top-left', left: x, top: y };
-    if (nearBottom) return { anchor: 'bottom-left', left: x, bottom: bottom };
-
-    return { anchor: 'top-left', left: x, top: y };
-};
-
 /**
  * Determine if element should use a placeholder image
  */
@@ -129,19 +100,69 @@ const isContainer = (element, childrenMap) => {
 };
 
 /**
- * Get layout direction hint based on children positions
+ * Determine Smart Constraints for responsive layout
+ * Calculates whether an element should anchor to Left, Right, Top, Bottom, or Center
+ * based on its position relative to its parent.
  */
-const getLayoutDirection = (element, childrenMap) => {
-    const children = childrenMap.get(element.id) || [];
-    if (children.length < 2) return 'column';
+const determineSmartConstraints = (element, parentWidth, parentHeight, localX, localY) => {
+    const { width, height } = element;
 
-    const sortedByX = [...children].sort((a, b) => a.x - b.x);
-    const sortedByY = [...children].sort((a, b) => a.y - b.y);
+    // Horizontal Analysis
+    let horizontalAnchor = 'left';
+    let leftValue = localX;
+    let rightValue = null;
+    let translateX = 0;
 
-    const xSpread = sortedByX[sortedByX.length - 1].x - sortedByX[0].x;
-    const ySpread = sortedByY[sortedByY.length - 1].y - sortedByY[0].y;
+    const centerX = localX + width / 2;
+    const parentCenterX = parentWidth / 2;
+    // 10% tolerance for centering
+    const centerTolerance = parentWidth * 0.1;
 
-    return xSpread > ySpread ? 'row' : 'column';
+    if (Math.abs(centerX - parentCenterX) < centerTolerance) {
+        // Center Horizontal
+        horizontalAnchor = 'center';
+        leftValue = 50; // 50%
+        translateX = -50; // -50%
+        // We will store percentage as number 50, output as 50%
+    } else if (centerX > parentCenterX) {
+        // Right Side
+        horizontalAnchor = 'right';
+        rightValue = parentWidth - (localX + width);
+        leftValue = null;
+    }
+
+    // Vertical Analysis
+    let verticalAnchor = 'top';
+    let topValue = localY;
+    let bottomValue = null;
+    let translateY = 0;
+
+    const centerY = localY + height / 2;
+    const parentCenterY = parentHeight / 2;
+    const centerToleranceY = parentHeight * 0.1;
+
+    if (Math.abs(centerY - parentCenterY) < centerToleranceY) {
+        // Center Vertical
+        verticalAnchor = 'center';
+        topValue = 50; // 50%
+        translateY = -50; // -50%
+    } else if (centerY > parentCenterY) {
+        // Bottom Side
+        verticalAnchor = 'bottom';
+        bottomValue = parentHeight - (localY + height);
+        topValue = null;
+    }
+
+    return {
+        horizontalAnchor,
+        verticalAnchor,
+        left: leftValue,
+        right: rightValue,
+        top: topValue,
+        bottom: bottomValue,
+        translateX,
+        translateY
+    };
 };
 
 /**
@@ -210,10 +231,13 @@ ${elementsXML}
 };
 
 /**
- * Generate USS - root elements use absolute positioning, children use Flexbox
+ * Generate USS - All elements use Smart Absolute Anchoring
  */
 export const generateUSS = (elements, canvasWidth, canvasHeight) => {
     const { childrenMap, parentMap, rootElements } = buildHierarchy(elements);
+
+    // Create a map to quickly access elements by ID for coordinate calculations
+    const elementMap = new Map(elements.map(el => [el.id, el]));
 
     const generateElementStyle = (element) => {
         const className = generateClassName(element);
@@ -222,58 +246,71 @@ export const generateUSS = (elements, canvasWidth, canvasHeight) => {
         const placeholderName = usePlaceholder ? getPlaceholderName(element) : null;
         const hasChildren = isContainer(element, childrenMap);
         const isRootLevel = !parentMap.has(element.id);
-        const layoutDir = hasChildren ? getLayoutDirection(element, childrenMap) : null;
+
+        // Determine Parent Dimensions and Local Coordinates
+        let parentW = canvasWidth;
+        let parentH = canvasHeight;
+        let localX = element.x;
+        let localY = element.y;
+
+        if (!isRootLevel) {
+            const parentId = parentMap.get(element.id);
+            const parent = elementMap.get(parentId);
+            if (parent) {
+                parentW = parent.width;
+                parentH = parent.height;
+                localX = element.x - parent.x;
+                localY = element.y - parent.y;
+            }
+        }
+
+        // CALCULATE SMART ANCHORS
+        const constraints = determineSmartConstraints(element, parentW, parentH, localX, localY);
 
         const styleLines = [
-            `/* ${element.name} ${hasChildren ? '(Container)' : ''} ${isRootLevel ? '[Root]' : ''} */`,
+            `/* ${element.name} [${constraints.horizontalAnchor}-${constraints.verticalAnchor}] */`,
             `.${className} {`,
         ];
 
-        // Root-level elements use absolute positioning for screen layout
-        if (isRootLevel) {
-            const anchor = determineAnchor(element, canvasWidth, canvasHeight);
-            styleLines.push(`  position: absolute;`);
+        // START: Positioning Strategy - Absolute Smart Anchors
+        styleLines.push(`  position: absolute;`);
 
-            if (anchor.left !== undefined) {
-                styleLines.push(`  left: ${convertPx(anchor.left)};`);
-            }
-            if (anchor.right !== undefined) {
-                styleLines.push(`  right: ${convertPx(anchor.right)};`);
-            }
-            if (anchor.top !== undefined) {
-                styleLines.push(`  top: ${convertPx(anchor.top)};`);
-            }
-            if (anchor.bottom !== undefined) {
-                styleLines.push(`  bottom: ${convertPx(anchor.bottom)};`);
-            }
+        // Horizontal
+        if (constraints.horizontalAnchor === 'center') {
+            styleLines.push(`  left: 50%;`);
+        } else if (constraints.horizontalAnchor === 'right') {
+            styleLines.push(`  right: ${convertPx(constraints.right)};`);
         } else {
-            // Child elements use margin for spacing within parent's Flexbox
-            styleLines.push(`  margin: 2px;`);
+            styleLines.push(`  left: ${convertPx(constraints.left)};`);
         }
 
-        // Container elements use Flexbox for children layout
+        // Vertical
+        if (constraints.verticalAnchor === 'center') {
+            styleLines.push(`  top: 50%;`);
+        } else if (constraints.verticalAnchor === 'bottom') {
+            styleLines.push(`  bottom: ${convertPx(constraints.bottom)};`);
+        } else {
+            styleLines.push(`  top: ${convertPx(constraints.top)};`);
+        }
+
+        // Translate (for centering)
+        if (constraints.translateX !== 0 || constraints.translateY !== 0) {
+            styleLines.push(`  translate: ${constraints.translateX}% ${constraints.translateY}%;`);
+        }
+        // END: Positioning Strategy
+
+        // Container properties (Flexbox properties on parent are mostly ignored by Absolute children, keeping for safety)
         if (hasChildren) {
             styleLines.push(`  /* Container: ${childrenMap.get(element.id).length} children */`);
-            styleLines.push(`  flex-direction: ${s.flexDirection || layoutDir};`);
-            styleLines.push(`  justify-content: ${s.justifyContent || 'flex-start'};`);
-            styleLines.push(`  align-items: ${s.alignItems || 'flex-start'};`);
-            styleLines.push(`  padding: 4px;`);
-        }
-
-        // Flex properties
-        if (s.flexGrow) {
-            styleLines.push(`  flex-grow: ${s.flexGrow};`);
-        }
-        if (s.flexShrink !== undefined) {
-            styleLines.push(`  flex-shrink: ${s.flexShrink};`);
         }
 
         // Size
         styleLines.push(`  width: ${convertPx(element.width)};`);
         styleLines.push(`  height: ${convertPx(element.height)};`);
 
-        // Flexbox for text alignment
+        // Flexbox for text alignment (centered content inside the element itself)
         if (element.type === 'Button' || element.type === 'Label') {
+            styleLines.push(`  display: flex;`);
             styleLines.push(`  justify-content: center;`);
             styleLines.push(`  align-items: center;`);
             styleLines.push(`  -unity-text-align: middle-center;`);
@@ -327,11 +364,10 @@ export const generateUSS = (elements, canvasWidth, canvasHeight) => {
  * Generated by Game UI Restoration Tool
  * Reference: ${canvasWidth} x ${canvasHeight}
  * 
- * Layout Strategy:
- * - Root-level elements: Absolute positioning with anchoring
- *   (keeps original screen positions for UI adaptation)
- * - Nested children: Flexbox flow layout within parent
- *   (auto-detected row/column based on arrangement)
+ * Layout Strategy: Smart Anchoring
+ * - Position: ABSOLUTE for ALL elements
+ * - Responsive: Elements automatically anchor to Nearest Edge or Center
+ *   (e.g., Right-side buttons stay Right; Center popups stay Center)
  * 
  * Panel Settings:
  * - Scale Mode: Scale With Screen Size
@@ -391,44 +427,25 @@ export const downloadPackage = async (elements, canvasWidth, canvasHeight, filen
         texturesFolder.file(name, content);
     }
 
-    const readme = `# Game UI Export
+    const readme = `# Game UI Export (Smart Responsive)
 
-## Layout Strategy
+## Layout Strategy: Smart Anchoring
 
-### Root-level elements (absolute positioning)
-- Use \`position: absolute\` with left/right/top/bottom anchoring
-- Preserves original screen positions
-- Anchored to nearest edge for responsive adaptation
+This export uses **Smart Absolute Anchoring** to ensure responsiveness across different aspect ratios while maintaining pixel-perfect positions.
 
-### Nested children (Flexbox)
-- Child elements within containers use Flexbox flow
-- Direction (row/column) auto-detected from arrangement
-- Use margin for spacing
+### Anchoring Logic
+- **Left/Top**: Elements closer to the top-left anchor there.
+- **Right/Bottom**: Elements closer to the right/bottom edge anchor there (e.g. \`right: 20px\`).
+- **Center**: Elements near the center use percentage positioning (\`left: 50%\`) and translation (\`translate: -50% -50%\`) to stay practically centered.
 
-## Example
-\`\`\`css
-/* Root-level panel - absolute positioned */
-.player-panel {
-  position: absolute;
-  left: 20px;
-  top: 15px;
-  width: 180px;
-  height: 50px;
-  flex-direction: row;  /* Children flow horizontally */
-}
+## How to use in Unity
 
-/* Nested child - Flexbox item */
-.player-avatar {
-  margin: 2px;
-  width: 44px;
-  height: 44px;
-}
-\`\`\`
+1. Import the generated folder.
+2. Open UI Builder with \`${filename}.uxml\`.
+3. Set Panel Settings to **Scale With Screen Size** (Ref: ${canvasWidth}x${canvasHeight}).
 
-## Panel Settings
-- Scale Mode: Scale With Screen Size
-- Reference Resolution: ${canvasWidth} x ${canvasHeight}
-- Match: 0.5
+## Troubleshooting
+- If an element jumps to the wrong side, its centerpoint was likely closer to that edge in the reference.
 `;
 
     zip.file('README.md', readme);
