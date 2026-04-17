@@ -19,8 +19,15 @@ const Validation = () => {
 
   return (
     <div className="validation-container">
+      <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1 className="glow-text" style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>模型校验</h1>
+          <p style={{ color: 'var(--text-secondary)' }}>微观推演，验证宏观分配资源在具体系统落地的平衡性</p>
+        </div>
+      </div>
+
       <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
-        <h2 className="glow-text">微观目标推演</h2>
+        <h2 className="glow-text" style={{ fontSize: '1.5rem' }}>微观目标推演</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginTop: '1.5rem' }}>
           <div>
             <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>选择目标系统</label>
