@@ -64,6 +64,16 @@ function gameReducer(state, action) {
       return { ...state, baseSettings: { ...state.baseSettings, ...action.payload } };
     case 'ADD_RESOURCE':
       return { ...state, resources: [...state.resources, action.payload] };
+    case 'UPDATE_RESOURCE':
+      return {
+        ...state,
+        resources: state.resources.map(r => r.id === action.payload.id ? { ...r, ...action.payload } : r)
+      };
+    case 'DELETE_RESOURCE':
+      return {
+        ...state,
+        resources: state.resources.filter(r => r.id !== action.payload)
+      };
     case 'UPDATE_ALLOCATION':
       const { macroId, featureId, percentage } = action.payload;
       return {
