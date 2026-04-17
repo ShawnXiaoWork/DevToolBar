@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - develop_resources
 
   # 允许手动触发
   workflow_dispatch:
