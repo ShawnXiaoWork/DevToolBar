@@ -35,6 +35,8 @@ const initialState = {
     {
       id: 'feat_magic',
       name: '魔法升级',
+      type: 'Core', // Core, Meta, Eco, Content
+      unlockCondition: { type: 'time', value: 2 }, // 2分钟解锁
       physicalResources: [
         { resourceId: 'res_dust', weight: 100 } // 100% 消耗粉尘
       ],
@@ -45,6 +47,8 @@ const initialState = {
     {
       id: 'feat_hero',
       name: '英雄升级',
+      type: 'Core',
+      unlockCondition: { type: 'time', value: 0 }, // 0分钟解锁
       physicalResources: [
         { resourceId: 'res_gold', weight: 80 },
         { resourceId: 'res_soul', weight: 20 }
@@ -84,6 +88,24 @@ function gameReducer(state, action) {
           m.id === macroId ? { ...m, allocations: { ...m.allocations, [featureId]: percentage } } : m
         )
       };
+    case 'UPDATE_FEATURE':
+      return {
+        ...state,
+        features: state.features.map(f => f.id === action.payload.id ? { ...f, ...action.payload } : f)
+      };
+    case 'ADD_FEATURE':
+      return { ...state, features: [...state.features, action.payload] };
+    case 'DELETE_FEATURE':
+      return {
+        ...state,
+        features: state.features.filter(f => f.id !== action.payload)
+      };
+    // Excel 批量替换
+    case 'REPLACE_RESOURCES':
+      return { ...state, resources: action.payload };
+    case 'REPLACE_FEATURES':
+      return { ...state, features: action.payload };
+
     // ... 其他 action
     default:
       return state;
