@@ -40,6 +40,7 @@ const initialState = {
       physicalResources: [
         { resourceId: 'res_dust', weight: 100 } // 100% 消耗粉尘
       ],
+      outputResources: [], // 初始产出资源
       growthModel: 'exponential',
       maxLevel: 20,
       params: { base: 1.1 }
@@ -53,6 +54,7 @@ const initialState = {
         { resourceId: 'res_gold', weight: 80 },
         { resourceId: 'res_soul', weight: 20 }
       ],
+      outputResources: [], // 初始产出资源
       growthModel: 'linear',
       maxLevel: 50,
       params: { slope: 10 }
@@ -94,7 +96,12 @@ function gameReducer(state, action) {
         features: state.features.map(f => f.id === action.payload.id ? { ...f, ...action.payload } : f)
       };
     case 'ADD_FEATURE':
-      return { ...state, features: [...state.features, action.payload] };
+      const newFeature = {
+        outputResources: [], // 确保新功能包含该字段
+        physicalResources: [],
+        ...action.payload
+      };
+      return { ...state, features: [...state.features, newFeature] };
     case 'DELETE_FEATURE':
       return {
         ...state,

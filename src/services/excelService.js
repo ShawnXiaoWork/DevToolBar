@@ -1,7 +1,6 @@
 /**
  * excelService.js
- * Excel 导入/导出服务 —— 基于 SheetJS (xlsx)
- * 支持：金本位资源字典 & 功能模块设计
+ * 升级版 Excel 服务：支持备注说明与产出资源配置
  */
 import * as XLSX from 'xlsx';
 
@@ -34,58 +33,48 @@ function sheetToJSON(file) {
 // 金本位 / 资源字典
 // ─────────────────────────────────────────────
 
-/** 下载资源字典模板 */
 export function downloadDictionaryTemplate() {
   const wb = XLSX.utils.book_new();
 
-  // 示例数据行（含表头）
+  // 增加备注行说明
   const data = [
-    { '资源名称': '金币', '对钻石汇率': 0.01, '备注': '基础货币，大量产出' },
-    { '资源名称': '钻石', '对钻石汇率': 1, '备注': '本位币，基准单位' },
-    { '资源名称': '灵魂石', '对钻石汇率': 5, '备注': '稀有资源' },
+    { '资源名称': '【示例】金币', '对钻石汇率': 0.01, '备注': '1金币=0.01钻石' },
+    { '资源名称': '钻石', '对钻石汇率': 1, '备注': '基准汇率必须为1' },
+    { '资源名称': '灵魂石', '对钻石汇率': 5, '备注': '稀有资源汇率较高' },
   ];
 
   const ws = XLSX.utils.json_to_sheet(data);
-
-  // 设置列宽
   ws['!cols'] = [{ wch: 20 }, { wch: 18 }, { wch: 30 }];
-
   XLSX.utils.book_append_sheet(wb, ws, '资源字典');
 
-  // 说明sheet
   const infoData = [
-    { '字段说明': '资源名称', '类型': '文字', '必填': '是', '说明': '资源的显示名称，例如：金币、灵魂石' },
-    { '字段说明': '对钻石汇率', '类型': '数字', '必填': '是', '说明': '1单位该资源 = X 钻石，钻石本身填1' },
-    { '字段说明': '备注', '类型': '文字', '必填': '否', '说明': '可选的描述信息' },
+    { '字段': '资源名称', '说明': '资源的唯一标识名称', '格式': '文本', '范例': '金币' },
+    { '字段': '对钻石汇率', '说明': '1单位该资源等价于多少钻石', '格式': '正浮点数', '范例': '0.01' },
+    { '字段': '备注', '说明': '仅用于设计者查看，不参与计算', '格式': '文本', '范例': '主要产出资源' },
   ];
   const wsInfo = XLSX.utils.json_to_sheet(infoData);
-  wsInfo['!cols'] = [{ wch: 15 }, { wch: 10 }, { wch: 8 }, { wch: 40 }];
-  XLSX.utils.book_append_sheet(wb, wsInfo, '字段说明');
+  XLSX.utils.book_append_sheet(wb, wsInfo, '字段定义说明');
 
-  downloadWorkbook(wb, '资源字典模板.xlsx');
+  downloadWorkbook(wb, '1.资源字典模板(含备注).xlsx');
 }
 
-/** 解析资源字典 Excel，返回资源数组 */
 export async function parseDictionaryExcel(file) {
   const rows = await sheetToJSON(file);
   const errors = [];
   const resources = [];
 
   rows.forEach((row, idx) => {
-    const name = String(row['资源名称'] || '').trim();
+    const name = String(row['资源名称'] || '').replace('【示例】', '').trim();
     const rate = parseFloat(row['对钻石汇率']);
 
-    if (!name) {
-      errors.push(`第 ${idx + 2} 行：资源名称不能为空`);
-      return;
-    }
+    if (!name) return; // 忽略空行
     if (isNaN(rate) || rate <= 0) {
-      errors.push(`第 ${idx + 2} 行 [${name}]：对钻石汇率必须为正数`);
+      errors.push(`第 ${idx + 2} 行 [${name}]：汇率必须为正数`);
       return;
     }
 
     resources.push({
-      id: `res_import_${Date.now()}_${idx}`,
+      id: `res_${Date.now()}_${idx}`,
       name,
       diamondRate: rate,
     });
@@ -95,132 +84,103 @@ export async function parseDictionaryExcel(file) {
 }
 
 // ─────────────────────────────────────────────
-// 功能模块设计
+// 功能模块设计 (升级：支持产出)
 // ─────────────────────────────────────────────
 
 const VALID_TYPES = ['Core', 'Meta', 'Eco', 'Content'];
 const VALID_MODELS = ['linear', 'exponential', 'logarithmic', 'power'];
 
-/** 下载功能模块模板 */
 export function downloadFeatureTemplate() {
   const wb = XLSX.utils.book_new();
 
-  // 示例数据
+  // 增加消耗资源与产出资源的配置列
+  // 采用字符串格式： "资源1:权重1, 资源2:权重2"
   const data = [
     {
-      '模块名称': '英雄升级',
+      '模块名称': '【示例】英雄升级',
       '类型': 'Core',
       '最大等级': 50,
-      '解锁时间(分钟)': 0,
+      '解锁时间(分)': 0,
       '成长模型': 'linear',
-      '系数': 10,
+      '系数(K)': 10,
+      '消耗资源权重': '金币:80, 灵魂石:20',
+      '产出资源权重': '',
+      '说明': '典型消耗型功能'
     },
     {
-      '模块名称': '魔法升级',
-      '类型': 'Core',
-      '最大等级': 20,
-      '解锁时间(分钟)': 2,
-      '成长模型': 'exponential',
-      '系数': 1.1,
-    },
-    {
-      '模块名称': '公会系统',
+      '模块名称': '【示例】炼金室',
       '类型': 'Eco',
-      '最大等级': 10,
-      '解锁时间(分钟)': 1440,
-      '成长模型': 'logarithmic',
-      '系数': 2,
-    },
-    {
-      '模块名称': '每日任务',
-      '类型': 'Meta',
-      '最大等级': 99,
-      '解锁时间(分钟)': 30,
-      '成长模型': 'power',
-      '系数': 1.5,
-    },
+      '最大等级': 20,
+      '解锁时间(分)': 120,
+      '成长模型': 'exponential',
+      '系数(K)': 1.2,
+      '消耗资源权重': '魔法粉尘:100',
+      '产出资源权重': '金币:100',
+      '说明': '产出金币的功能'
+    }
   ];
 
   const ws = XLSX.utils.json_to_sheet(data);
   ws['!cols'] = [
-    { wch: 20 }, { wch: 12 }, { wch: 12 },
-    { wch: 18 }, { wch: 15 }, { wch: 10 },
+    { wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, 
+    { wch: 12 }, { wch: 10 }, { wch: 25 }, { wch: 25 }, { wch: 20 }
   ];
-  XLSX.utils.book_append_sheet(wb, ws, '功能模块');
+  XLSX.utils.book_append_sheet(wb, ws, '功能模块配置');
 
-  // 类型枚举说明
-  const typeInfo = [
-    { '类型值': 'Core', '中文': '核心循环', '建议数量': '3-5个', '解锁时机': '0-5 分钟', '说明': '游戏最核心的体验循环，必须最早解锁' },
-    { '类型值': 'Meta', '中文': '外部成长', '建议数量': '8-12个', '解锁时机': '15-60 分钟', '说明': '跨局进度、成长系统等' },
-    { '类型值': 'Eco', '中文': '商业社交', '建议数量': '5-8个', '解锁时机': '1-2 天', '说明': '社交、交易、公会等留存向功能' },
-    { '类型值': 'Content', '中文': '内容扩展', '建议数量': '不限', '解锁时机': 'D7+', '说明': '新地图、新玩法等长期内容' },
+  // 参数类型说明页
+  const paramInfo = [
+    { '参数项': '类型 (Type)', '说明': 'Core:核心循环 | Meta:外部成长 | Eco:商业社交 | Content:内容扩展', '规则': '必须属于这四类' },
+    { '参数项': '成长模型', '说明': 'linear: 线性 | exponential: 指数 | logarithmic: 对数 | power: 幂函数', '规则': '影响升级成本的增长速度' },
+    { '参数项': '系数(K)', '说明': '线性模型为斜率，指数模型为底数(建议1.1-1.5)', '规则': '数值越大成长越快' },
+    { '参数项': '消耗/产出权重', '说明': '格式： 资源名:权重 (多个用逗号隔开)', '范例': '金币:70, 钻石:30' },
   ];
-  const wsType = XLSX.utils.json_to_sheet(typeInfo);
-  wsType['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 35 }];
-  XLSX.utils.book_append_sheet(wb, wsType, '类型说明');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(paramInfo), '字段详细说明');
 
-  // 成长模型说明
-  const modelInfo = [
-    { '模型值': 'linear', '中文': '线性增长', '公式': 'cost = slope × level', '适用场景': '均匀成长，普通资源消耗' },
-    { '模型值': 'exponential', '中文': '指数增长', '公式': 'cost = base ^ level', '适用场景': '快速膨胀，高稀缺资源' },
-    { '模型值': 'logarithmic', '中文': '对数增长', '公式': 'cost = base × ln(level)', '适用场景': '前期快后期慢，友好型成长' },
-    { '模型值': 'power', '中文': '幂函数', '公式': 'cost = level ^ base', '适用场景': '中期加速，可控的成长曲线' },
-  ];
-  const wsModel = XLSX.utils.json_to_sheet(modelInfo);
-  wsModel['!cols'] = [{ wch: 15 }, { wch: 12 }, { wch: 25 }, { wch: 30 }];
-  XLSX.utils.book_append_sheet(wb, wsModel, '成长模型说明');
-
-  downloadWorkbook(wb, '功能模块设计模板.xlsx');
+  downloadWorkbook(wb, '2.功能模块设计模板(含产出配置).xlsx');
 }
 
-/** 解析功能模块 Excel，返回功能数组 */
-export async function parseFeatureExcel(file) {
+/** 辅助函数：解析资源权重字符串 */
+function parseResourceString(str, allResources) {
+  if (!str) return [];
+  return str.split(/[,，]/).map(item => {
+    const [name, weightStr] = item.split(/[:：]/);
+    const weight = parseInt(weightStr) || 100;
+    const res = allResources.find(r => r.name === name.trim());
+    return res ? { resourceId: res.id, weight } : null;
+  }).filter(item => item !== null);
+}
+
+export async function parseFeatureExcel(file, allResources) {
   const rows = await sheetToJSON(file);
   const errors = [];
   const features = [];
 
   rows.forEach((row, idx) => {
-    const name = String(row['模块名称'] || '').trim();
+    const name = String(row['模块名称'] || '').replace('【示例】', '').trim();
     const type = String(row['类型'] || '').trim();
-    const maxLevel = parseInt(row['最大等级']);
-    const unlockTime = parseInt(row['解锁时间(分钟)']);
-    const growthModel = String(row['成长模型'] || 'linear').trim().toLowerCase();
-    const coefficient = parseFloat(row['系数']);
+    const model = String(row['成长模型'] || 'linear').trim().toLowerCase();
+    const k = parseFloat(row['系数(K)']);
+    
+    if (!name) return;
 
-    if (!name) {
-      errors.push(`第 ${idx + 2} 行：模块名称不能为空`);
-      return;
-    }
     if (!VALID_TYPES.includes(type)) {
-      errors.push(`第 ${idx + 2} 行 [${name}]：类型"${type}"无效，必须是 Core/Meta/Eco/Content`);
-      return;
-    }
-    if (isNaN(maxLevel) || maxLevel <= 0) {
-      errors.push(`第 ${idx + 2} 行 [${name}]：最大等级必须为正整数`);
-      return;
-    }
-    if (isNaN(unlockTime) || unlockTime < 0) {
-      errors.push(`第 ${idx + 2} 行 [${name}]：解锁时间必须 >= 0`);
-      return;
-    }
-    if (!VALID_MODELS.includes(growthModel)) {
-      errors.push(`第 ${idx + 2} 行 [${name}]：成长模型"${growthModel}"无效，必须是 linear/exponential/logarithmic/power`);
+      errors.push(`第 ${idx + 2} 行 [${name}]：无效的类型 ${type}`);
       return;
     }
 
-    const params = growthModel === 'linear'
-      ? { slope: isNaN(coefficient) ? 1 : coefficient }
-      : { base: isNaN(coefficient) ? 1.1 : coefficient };
+    const costs = parseResourceString(row['消耗资源权重'], allResources);
+    const outputs = parseResourceString(row['产出资源权重'], allResources);
 
     features.push({
-      id: `feat_import_${Date.now()}_${idx}`,
+      id: `feat_${Date.now()}_${idx}`,
       name,
       type,
-      maxLevel,
-      unlockCondition: { type: 'time', value: unlockTime },
-      growthModel,
-      params,
-      physicalResources: [],
+      maxLevel: parseInt(row['最大等级']) || 10,
+      unlockCondition: { type: 'time', value: parseInt(row['解锁时间(分)']) || 0 },
+      growthModel: VALID_MODELS.includes(model) ? model : 'linear',
+      params: model === 'linear' ? { slope: k || 1 } : { base: k || 1.1 },
+      physicalResources: costs, // 消耗
+      outputResources: outputs,  // 产出
     });
   });
 
