@@ -58,6 +58,8 @@ const initialState = {
 
 function gameReducer(state, action) {
   switch (action.type) {
+    case 'IMPORT_STATE':
+      return { ...initialState, ...action.payload };
     case 'UPDATE_PROJECT_NAME':
       return { ...state, projectName: action.payload };
     case 'UPDATE_BASE_SETTINGS':
@@ -90,6 +92,23 @@ function gameReducer(state, action) {
 
 export const GameProvider = ({ children }) => {
   const [state, dispatch] = useReducer(gameReducer, initialState);
+
+  // 初始化：从 localStorage 加载
+  useEffect(() => {
+    const saved = localStorage.getItem('dev_toolbar_cache');
+    if (saved) {
+      try {
+        dispatch({ type: 'IMPORT_STATE', payload: JSON.parse(saved) });
+      } catch (e) {
+        console.error('Failed to parse cached state');
+      }
+    }
+  }, []);
+
+  // 状态变更时自动保存到 localStorage (免登录基础功能)
+  useEffect(() => {
+    localStorage.setItem('dev_toolbar_cache', JSON.stringify(state));
+  }, [state]);
 
   // 这里可以添加计算逻辑，例如计算某个功能的总分配预算 (以钻石计)
   const calculateBudget = (featureId, dayRange) => {
