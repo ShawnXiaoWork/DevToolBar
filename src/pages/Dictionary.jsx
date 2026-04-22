@@ -3,6 +3,7 @@ import { useGame } from '../context/GameContext';
 import Modal from './Modal';
 import ExcelImportPanel from '../components/ExcelImportPanel';
 import { downloadDictionaryTemplate, parseDictionaryExcel } from '../services/excelService';
+import { Package, Palette } from 'lucide-react';
 
 const Dictionary = () => {
   const { state, dispatch } = useGame();
@@ -48,7 +49,6 @@ const Dictionary = () => {
     setIsModalOpen(false);
   };
 
-  // Excel 导入处理
   const handleExcelImport = async (file, mode) => {
     const { resources, errors } = await parseDictionaryExcel(file);
     if (resources.length > 0) {
@@ -93,13 +93,12 @@ const Dictionary = () => {
       </div>
 
       {/* ── 资源字典 ── */}
-      <div className="glass-panel" style={{ padding: '2rem' }}>
+      <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <h2 className="glow-text">资源字典与汇率</h2>
           <button className="btn-primary" onClick={openAddModal}>+ 添加新资源</button>
         </div>
 
-        {/* Excel 导入面板 */}
         <ExcelImportPanel
           onDownloadTemplate={downloadDictionaryTemplate}
           onImport={handleExcelImport}
@@ -107,7 +106,6 @@ const Dictionary = () => {
           description="表头：资源名称、对钻石汇率、备注（可选）"
         />
 
-        {/* 资源表格 */}
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>
@@ -134,28 +132,18 @@ const Dictionary = () => {
                   <td style={{ padding: '0.9rem 1rem', fontWeight: 500 }}>{res.name}</td>
                   <td style={{ padding: '0.9rem 1rem', color: 'var(--accent-secondary)' }}>
                     {res.diamondRate}
-                    <span style={{ marginLeft: 6, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                      ◆
-                    </span>
+                    <span style={{ marginLeft: 6, fontSize: '0.78rem', color: 'var(--text-muted)' }}>◆</span>
                   </td>
                   <td style={{ padding: '0.9rem 1rem', display: 'flex', gap: '0.5rem' }}>
-                    <button
-                      className="btn-secondary"
-                      style={{ padding: '4px 12px', fontSize: '0.82rem' }}
-                      onClick={() => openEditModal(res)}
-                    >
-                      编辑
-                    </button>
+                    <button className="btn-secondary" onClick={() => openEditModal(res)}>编辑</button>
                     <button
                       style={{
                         padding: '4px 12px', fontSize: '0.82rem',
                         background: 'rgba(255, 82, 82, 0.1)',
                         border: '1px solid rgba(255, 82, 82, 0.3)',
                         color: 'var(--accent-danger)', borderRadius: '6px',
-                        cursor: 'pointer', transition: 'all 0.2s',
+                        cursor: 'pointer',
                       }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,82,82,0.2)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,82,82,0.1)'}
                       onClick={() => handleDeleteResource(res.id)}
                     >
                       删除
@@ -168,7 +156,73 @@ const Dictionary = () => {
         </table>
       </div>
 
-      {/* 编辑 / 新增 Modal */}
+      {/* ── [NEW] 金本位定价规则 ── */}
+      <div className="glass-panel" style={{ padding: '2rem' }}>
+        <h2 className="glow-text" style={{ marginBottom: '1.5rem' }}>金本位定价规则 (Pricing Rules)</h2>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', fontSize: '0.9rem' }}>
+          通过定义“道具大类基准价值”与“品质系数”，实现对海量道具价值的快速对齐与反向计算。
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1.5rem', borderRadius: '12px' }}>
+             <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Package size={18} /> 道具大类基准价值
+             </h3>
+             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                {state.economyRules.itemTypes.map((type, idx) => (
+                  <div key={type.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <span style={{ flex: 1, fontSize: '0.9rem' }}>{type.name}</span>
+                    <div style={{ position: 'relative', width: '120px' }}>
+                       <input 
+                         type="number"
+                         value={type.baseValue}
+                         onChange={(e) => {
+                           const newTypes = [...state.economyRules.itemTypes];
+                           newTypes[idx].baseValue = Number(e.target.value);
+                           dispatch({ type: 'UPDATE_ECONOMY_RULES', payload: { itemTypes: newTypes } });
+                         }}
+                         style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', color: 'white', padding: '4px 8px', borderRadius: '4px' }}
+                       />
+                       <span style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.7rem', color: 'var(--text-muted)' }}>💎</span>
+                    </div>
+                  </div>
+                ))}
+             </div>
+          </div>
+
+          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1.5rem', borderRadius: '12px' }}>
+             <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--accent-secondary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Palette size={18} /> 品质价值系数
+             </h3>
+             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                {state.economyRules.qualities.map((q, idx) => (
+                  <div key={q.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: q.color }} />
+                    <span style={{ flex: 1, fontSize: '0.9rem' }}>{q.name}系数</span>
+                    <div style={{ position: 'relative', width: '100px' }}>
+                       <input 
+                         type="number"
+                         value={q.multiplier}
+                         onChange={(e) => {
+                           const newQualities = [...state.economyRules.qualities];
+                           newQualities[idx].multiplier = Number(e.target.value);
+                           dispatch({ type: 'UPDATE_ECONOMY_RULES', payload: { qualities: newQualities } });
+                         }}
+                         style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', color: 'white', padding: '4px 8px', borderRadius: '4px' }}
+                       />
+                       <span style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.7rem', color: 'var(--text-muted)' }}>x</span>
+                    </div>
+                  </div>
+                ))}
+             </div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'rgba(0,229,255,0.05)', borderRadius: '8px', fontSize: '0.85rem', color: 'var(--accent-secondary)', border: '1px solid rgba(0,229,255,0.2)' }}>
+           <strong>推演公式：</strong> 最终道具价值 = 道具大类基准价值 × 品质系数。 例如：装备 (100) × 橙色品质 (30x) = 3000 💎。
+        </div>
+      </div>
+
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -186,9 +240,7 @@ const Dictionary = () => {
             />
           </div>
           <div>
-            <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-              对钻石汇率（1单位 = X钻石）
-            </label>
+            <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>对钻石汇率（1单位 = X钻石）</label>
             <input
               type="number"
               value={formData.diamondRate}

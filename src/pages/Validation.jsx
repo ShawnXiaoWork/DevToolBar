@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { useGame } from '../context/GameContext';
 import { ShieldAlert, TrendingUp, TrendingDown, AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { calculateCumulativeCost } from '../services/mathUtils';
 
 const Validation = () => {
   const { state } = useGame();
@@ -22,14 +23,15 @@ const Validation = () => {
           return sum + (dailyValue * day);
         }, 0);
 
-      // 累计刚性消耗 (消耗是达到该阶段目标价值缺口所需的总价值投入)
+      // 累计刚性消耗 (基于 Progression Path 自动计算)
       const milestoneKey = `day${day}`;
-      const valueGap = playerModel.milestones[milestoneKey]?.targetValueGap || 0;
-      const totalConsumption = features
-        .filter(f => f.physicalResources?.length > 0)
-        .reduce((sum, f) => {
-          return sum + (valueGap * (f.auditParams?.valueCostRatio || 0));
-        }, 0);
+      const targets = playerModel.milestones[milestoneKey]?.progressionTargets || [];
+      const totalConsumption = targets.reduce((sum, target) => {
+        const feat = features.find(f => f.id === target.featureId);
+        if (!feat) return sum;
+        const rawCost = calculateCumulativeCost(feat.growthModel, feat.params, target.targetLevel);
+        return sum + (rawCost * (feat.auditParams?.valueCostRatio || 1));
+      }, 0);
 
       const balance = totalProduction - totalConsumption;
       const ratio = totalConsumption > 0 ? totalProduction / totalConsumption : totalProduction > 0 ? 99 : 1;

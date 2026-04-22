@@ -106,6 +106,19 @@ const FeatureConfig = () => {
   const [viewMode, setViewMode] = useState('list');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newFeatName, setNewFeatName] = useState('');
+  const [helpers, setHelpers] = useState({});
+
+  const updateHelper = (featId, field, value) => {
+    setHelpers(prev => ({
+      ...prev,
+      [featId]: { 
+        typeId: state.economyRules.itemTypes[0]?.id, 
+        qualityId: state.economyRules.qualities[2]?.id,
+        ...prev[featId], 
+        [field]: value 
+      }
+    }));
+  };
 
   const updateFeature = (id, updates) => {
     dispatch({ type: 'UPDATE_FEATURE', payload: { id, ...updates } });
@@ -272,18 +285,19 @@ const FeatureConfig = () => {
                 </div>
 
                 {/* [NEW] 预期推演结果 (Live Audit Result) */}
-                <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(0,229,255,0.05) 0%, rgba(0,230,118,0.05) 100%)', padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
+                <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(0,229,255,0.05) 0%, rgba(0,230,118,0.05) 100%)', padding: '1.5rem', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
                    <div style={{ position: 'absolute', top: '-10px', right: '-10px', opacity: 0.1 }}>
                       {feat.outputResources?.length > 0 ? <TrendingUp size={80} /> : <ShieldAlert size={80} />}
                    </div>
                    
-                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Clock size={14} /> 预期推演 (金本位价值 - D7)
                    </div>
 
-                   {feat.outputResources?.length > 0 ? (
-                     <div>
-                        {(() => {
+                   {/* 核心数值展示 */}
+                   <div style={{ marginBottom: '1.5rem' }}>
+                    {feat.outputResources?.length > 0 ? (
+                        (() => {
                           const resId = feat.outputResources[0]?.resourceId;
                           const rate = state.resources.find(r => r.id === resId)?.diamondRate || 0;
                           const totalVal = state.playerModel.dailyTime * state.playerModel.efficiency * (feat.auditParams?.outputPerMin || 0) * rate;
@@ -292,19 +306,12 @@ const FeatureConfig = () => {
                               <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--accent-success)' }}>
                                 {totalVal.toFixed(1)} <span style={{ fontSize: '1rem' }}>💎</span>
                               </div>
-                              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
-                                 预期第 7 天单日产出总价值
-                              </div>
-                              <div style={{ marginTop: '1rem', padding: '0.5rem', background: 'rgba(0,230,118,0.1)', borderRadius: '4px', fontSize: '0.75rem', color: '#00E676' }}>
-                                 折算：{(state.playerModel.dailyTime * state.playerModel.efficiency * (feat.auditParams?.outputPerMin || 0)).toLocaleString()} 资源 × {rate} 汇率
-                              </div>
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>预期第 7 天单日产出价值</div>
                             </>
                           );
-                        })()}
-                     </div>
-                   ) : (
-                     <div>
-                        {(() => {
+                        })()
+                    ) : (
+                        (() => {
                           const gap = state.playerModel.milestones.day7.targetValueGap || 0;
                           const totalVal = gap * (feat.auditParams?.valueCostRatio || 0);
                           return (
@@ -312,17 +319,65 @@ const FeatureConfig = () => {
                               <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--accent-danger)' }}>
                                 {totalVal.toFixed(1)} <span style={{ fontSize: '1rem' }}>💎</span>
                               </div>
-                              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
-                                 达到第 7 天目标所需刚性价值
-                              </div>
-                              <div style={{ marginTop: '1rem', padding: '0.5rem', background: 'rgba(255,82,82,0.1)', borderRadius: '4px', fontSize: '0.75rem', color: '#FF5252' }}>
-                                 计：{gap} 目标价值 × {feat.auditParams?.valueCostRatio || 0} 转化比
-                              </div>
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>达到第 7 天目标所需价值</div>
                             </>
                           );
-                        })()}
-                     </div>
-                   )}
+                        })()
+                    )}
+                   </div>
+
+                   {/* [NEW] 道具数量助手 */}
+                   <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.8rem', display: 'flex', justifyContent: 'space-between' }}>
+                         <span>数量换算助手 (Quantity Helper)</span>
+                         <Settings2 size={12} />
+                      </div>
+                      
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '1rem' }}>
+                         <select 
+                            className="feature-input" 
+                            style={{ padding: '2px 4px', fontSize: '0.75rem', height: 'auto' }}
+                            value={helpers[feat.id]?.typeId || state.economyRules.itemTypes[0]?.id}
+                            onChange={(e) => updateHelper(feat.id, 'typeId', e.target.value)}
+                         >
+                            {state.economyRules.itemTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                         </select>
+                         <select 
+                            className="feature-input" 
+                            style={{ padding: '2px 4px', fontSize: '0.75rem', height: 'auto' }}
+                            value={helpers[feat.id]?.qualityId || state.economyRules.qualities[2]?.id}
+                            onChange={(e) => updateHelper(feat.id, 'qualityId', e.target.value)}
+                         >
+                            {state.economyRules.qualities.map(q => <option key={q.id} value={q.id}>{q.name}</option>)}
+                         </select>
+                      </div>
+
+                      {(() => {
+                         const resId = feat.outputResources[0]?.resourceId;
+                         const rate = state.resources.find(r => r.id === resId)?.diamondRate || 0;
+                         const totalVal = feat.outputResources?.length > 0 
+                            ? (state.playerModel.dailyTime * state.playerModel.efficiency * (feat.auditParams?.outputPerMin || 0) * rate)
+                            : (state.playerModel.milestones.day7.targetValueGap * (feat.auditParams?.valueCostRatio || 0));
+                         
+                         const typeId = helpers[feat.id]?.typeId || state.economyRules.itemTypes[1]?.id; // Default to material
+                         const qualityId = helpers[feat.id]?.qualityId || state.economyRules.qualities[2]?.id; // Default to blue
+                         
+                         const type = state.economyRules.itemTypes.find(t => t.id === typeId);
+                         const quality = state.economyRules.qualities.find(q => q.id === qualityId);
+                         const itemValue = (type?.baseValue || 0) * (quality?.multiplier || 1);
+                         
+                         return (
+                            <div style={{ textAlign: 'center', padding: '0.5rem', background: 'rgba(124,77,255,0.1)', borderRadius: '4px' }}>
+                               <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent-primary)' }}>
+                                  ≈ {(itemValue > 0 ? totalVal / itemValue : 0).toFixed(1)} <span style={{ fontSize: '0.7rem' }}>个</span>
+                                </div>
+                                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                   折合 [{quality?.name}·{type?.name}] 数量
+                                </div>
+                            </div>
+                         );
+                      })()}
+                   </div>
                 </div>
               </div>
             </motion.div>

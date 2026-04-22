@@ -10,15 +10,31 @@ const initialState = {
     diamondPerTime: 100,
     timeUnit: "小时"
   },
+  // 经济价值规则 (基于类型与品质的定价)
+  economyRules: {
+    itemTypes: [
+      { id: 'equip', name: '装备', baseValue: 100 },
+      { id: 'material', name: '材料', baseValue: 10 },
+      { id: 'chip', name: '碎片', baseValue: 5 },
+      { id: 'consumable', name: '消耗品', baseValue: 2 },
+    ],
+    qualities: [
+      { id: 'white', name: '白色', multiplier: 1, color: '#FFFFFF' },
+      { id: 'green', name: '绿色', multiplier: 2, color: '#4CAF50' },
+      { id: 'blue', name: '蓝色', multiplier: 4, color: '#2196F3' },
+      { id: 'purple', name: '紫色', multiplier: 10, color: '#9C27B0' },
+      { id: 'orange', name: '橙色', multiplier: 30, color: '#FF9800' },
+    ]
+  },
   // 基础玩家模型
   playerModel: {
     dailyTime: 45, // 每天标准在线时长（分钟）
     efficiency: 1.0, // 活跃分层效率 (肝帝 1.2, 标准 1.0, 咸鱼 0.6)
     milestones: {
-      day1: { targetLevel: 5, targetValueGap: 20 }, // 目标价值缺口 (以钻石计)
-      day3: { targetLevel: 15, targetValueGap: 80 },
-      day7: { targetLevel: 30, targetValueGap: 300 },
-      day30: { targetLevel: 100, targetValueGap: 2000 }
+      day1: { targetLevel: 5, targetValueGap: 20, progressionTargets: [] }, 
+      day3: { targetLevel: 15, targetValueGap: 80, progressionTargets: [] },
+      day7: { targetLevel: 30, targetValueGap: 300, progressionTargets: [] },
+      day30: { targetLevel: 100, targetValueGap: 2000, progressionTargets: [] }
     }
   },
   // 资源字典
@@ -54,8 +70,8 @@ const initialState = {
       outputResources: [], // 初始产出资源
       growthModel: 'exponential',
       maxLevel: 20,
-      params: { base: 1.1 },
-      auditParams: { valueCostRatio: 1.0 } // 1单位目标价值需要 1.0 单位金本位价值投入
+      params: { base: 1.1, baseCost: 100 },
+      auditParams: { valueCostRatio: 1.0 } 
     },
     {
       id: 'feat_hero',
@@ -106,10 +122,26 @@ function gameReducer(state, action) {
           ...state.playerModel, 
           milestones: { 
             ...state.playerModel.milestones, 
-            [action.payload.day]: action.payload.data 
+            [action.payload.day]: { ...state.playerModel.milestones[action.payload.day], ...action.payload.data }
           } 
         } 
       };
+    case 'UPDATE_MILESTONE_TARGETS':
+      return {
+        ...state,
+        playerModel: {
+          ...state.playerModel,
+          milestones: {
+            ...state.playerModel.milestones,
+            [action.payload.day]: {
+              ...state.playerModel.milestones[action.payload.day],
+              progressionTargets: action.payload.targets
+            }
+          }
+        }
+      };
+    case 'UPDATE_ECONOMY_RULES':
+      return { ...state, economyRules: { ...state.economyRules, ...action.payload } };
     case 'ADD_RESOURCE':
       return { ...state, resources: [...state.resources, action.payload] };
     case 'UPDATE_RESOURCE':
