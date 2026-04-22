@@ -12,21 +12,23 @@ const Validation = () => {
     const milestones = [1, 3, 7, 30];
     
     return milestones.map(day => {
-      // 累计产出 (产出是按天累积的)
+      // 累计产出 (产出是按天累积的，全部折算为钻石价值)
       const totalProduction = features
         .filter(f => f.outputResources?.length > 0)
         .reduce((sum, f) => {
-          const daily = playerModel.dailyTime * playerModel.efficiency * (f.auditParams?.outputPerMin || 0);
-          return sum + (daily * day);
+          const resId = f.outputResources[0]?.resourceId;
+          const rate = state.resources.find(r => r.id === resId)?.diamondRate || 0;
+          const dailyValue = playerModel.dailyTime * playerModel.efficiency * (f.auditParams?.outputPerMin || 0) * rate;
+          return sum + (dailyValue * day);
         }, 0);
 
-      // 累计刚性消耗 (消耗是达到该天数目标关卡所需的总投入)
+      // 累计刚性消耗 (消耗是达到该阶段目标价值缺口所需的总价值投入)
       const milestoneKey = `day${day}`;
-      const powerGap = playerModel.milestones[milestoneKey]?.targetPowerGap || 0;
+      const valueGap = playerModel.milestones[milestoneKey]?.targetValueGap || 0;
       const totalConsumption = features
         .filter(f => f.physicalResources?.length > 0)
         .reduce((sum, f) => {
-          return sum + (powerGap * (f.auditParams?.powerCostRatio || 0));
+          return sum + (valueGap * (f.auditParams?.valueCostRatio || 0));
         }, 0);
 
       const balance = totalProduction - totalConsumption;
@@ -42,7 +44,7 @@ const Validation = () => {
         status: ratio > 1.2 ? 'overflow' : ratio < 0.8 ? 'shortage' : 'balanced'
       };
     });
-  }, [playerModel, features]);
+  }, [playerModel, features, state.resources]);
 
   // 生成预警信息
   const redFlags = useMemo(() => {
@@ -54,13 +56,13 @@ const Validation = () => {
       flags.push({ 
         type: 'error', 
         title: '第 7 天资源溢出', 
-        desc: `产出比消耗高出 ${((d7.ratio - 1) * 100).toFixed(0)}%。建议调低挂机产出或增加金币消耗系统。` 
+        desc: `总产出价值比消耗高出 ${((d7.ratio - 1) * 100).toFixed(0)}%。这意味着玩家账户中会有大量无法消耗的钻石价值结余。` 
       });
     } else if (d7?.status === 'shortage') {
       flags.push({ 
         type: 'warning', 
         title: '第 7 天资源紧缺', 
-        desc: `玩家无法靠现有产出填补战力缺口。建议增加新手期福利或降低强化成本。` 
+        desc: `当前产出价值无法覆盖目标缺口。玩家会感到非常卡关，除非额外投放资源。` 
       });
     }
 
@@ -68,17 +70,17 @@ const Validation = () => {
       flags.push({ 
         type: 'critical', 
         title: '长期数值崩盘预警', 
-        desc: '第 30 天产出已达消耗的 2 倍以上，后期资源将完全失去价值。' 
+        desc: '到第 30 天时，系统产出的总钻石价值已严重超标，后期通货膨胀不可控。' 
       });
     }
 
     // 无效解锁检测
     const coreFeatures = features.filter(f => f.type === 'Core' && f.physicalResources?.length > 0);
-    if (coreFeatures.length > 0 && playerModel.milestones.day1.targetPowerGap === 0) {
+    if (coreFeatures.length > 0 && playerModel.milestones.day1.targetValueGap === 0) {
       flags.push({
         type: 'info',
         title: '目标配置缺失',
-        desc: '已配置核心消耗系统，但第 1 天目标战力缺口为 0，导致系统无法评估早期压力。'
+        desc: '已配置核心消耗系统，但第 1 天目标价值缺口为 0，导致系统无法评估早期压力。'
       });
     }
 
@@ -88,8 +90,8 @@ const Validation = () => {
   return (
     <div className="validation-container">
       <div style={{ marginBottom: '2rem' }}>
-        <h1 className="glow-text" style={{ fontSize: '2rem', marginBottom: '0.4rem' }}>全局经济审计 (Audit)</h1>
-        <p style={{ color: 'var(--text-secondary)' }}>基于标准玩家模型推演 1/3/7/30 天的产出与消耗平衡性</p>
+        <h1 className="glow-text" style={{ fontSize: '2rem', marginBottom: '0.4rem' }}>全局金本位审计 (Gold Standard Audit)</h1>
+        <p style={{ color: 'var(--text-secondary)' }}>基于钻石价值折算 1/3/7/30 天的总产出与总消耗平衡性</p>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem' }}>
@@ -97,7 +99,7 @@ const Validation = () => {
         {/* 左侧：趋势图表 */}
         <div className="glass-panel" style={{ padding: '2rem' }}>
           <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <TrendingUp size={20} color="var(--accent-primary)" /> 收支平衡推演曲线
+            <TrendingUp size={20} color="var(--accent-primary)" /> 累计钻石价值平衡曲线
           </h3>
           <div style={{ width: '100%', height: 300 }}>
             <ResponsiveContainer>
@@ -116,10 +118,11 @@ const Validation = () => {
                 <XAxis dataKey="dayLabel" stroke="var(--text-muted)" />
                 <YAxis stroke="var(--text-muted)" />
                 <Tooltip 
+                  formatter={(value) => [`${value.toFixed(1)} 💎`, '']}
                   contentStyle={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
                   itemStyle={{ color: '#fff' }}
                 />
-                <Area type="monotone" dataKey="production" name="预期总产出" stroke="#00E676" fillOpacity={1} fill="url(#colorProd)" />
+                <Area type="monotone" dataKey="production" name="预期总价值" stroke="#00E676" fillOpacity={1} fill="url(#colorProd)" />
                 <Area type="monotone" dataKey="consumption" name="刚性总消耗" stroke="#FF5252" fillOpacity={1} fill="url(#colorCons)" />
               </AreaChart>
             </ResponsiveContainer>
@@ -134,9 +137,9 @@ const Validation = () => {
                 borderRadius: '8px',
                 borderBottom: `3px solid ${res.status === 'overflow' ? '#00E676' : res.status === 'shortage' ? '#FF5252' : 'var(--accent-primary)'}`
               }}>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{res.dayLabel} 结余</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{res.dayLabel} 结余 (钻石)</div>
                 <div style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '4px 0', color: res.balance >= 0 ? '#00E676' : '#FF5252' }}>
-                  {res.balance > 0 ? '+' : ''}{res.balance.toLocaleString()}
+                  {res.balance > 0 ? '+' : ''}{res.balance.toFixed(1)}
                 </div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
                   产销比: {res.ratio.toFixed(2)}

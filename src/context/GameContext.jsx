@@ -15,10 +15,10 @@ const initialState = {
     dailyTime: 45, // 每天标准在线时长（分钟）
     efficiency: 1.0, // 活跃分层效率 (肝帝 1.2, 标准 1.0, 咸鱼 0.6)
     milestones: {
-      day1: { targetLevel: 5, targetPowerGap: 200 },
-      day3: { targetLevel: 15, targetPowerGap: 800 },
-      day7: { targetLevel: 30, targetPowerGap: 3000 },
-      day30: { targetLevel: 100, targetPowerGap: 20000 }
+      day1: { targetLevel: 5, targetValueGap: 20 }, // 目标价值缺口 (以钻石计)
+      day3: { targetLevel: 15, targetValueGap: 80 },
+      day7: { targetLevel: 30, targetValueGap: 300 },
+      day30: { targetLevel: 100, targetValueGap: 2000 }
     }
   },
   // 资源字典
@@ -55,7 +55,7 @@ const initialState = {
       growthModel: 'exponential',
       maxLevel: 20,
       params: { base: 1.1 },
-      auditParams: { powerCostRatio: 5 } // 1战力缺口需要消耗5粉尘
+      auditParams: { valueCostRatio: 1.0 } // 1单位目标价值需要 1.0 单位金本位价值投入
     },
     {
       id: 'feat_hero',
@@ -70,7 +70,7 @@ const initialState = {
       growthModel: 'linear',
       maxLevel: 50,
       params: { slope: 10 },
-      auditParams: { powerCostRatio: 15 } // 1战力缺口需要消耗15混合资源
+      auditParams: { valueCostRatio: 1.0 } 
     },
     {
       id: 'feat_afk',

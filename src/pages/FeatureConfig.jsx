@@ -246,7 +246,7 @@ const FeatureConfig = () => {
                     </h3>
                     {feat.outputResources?.length > 0 ? (
                       <div>
-                        <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.4rem' }}>每分钟基础产出</label>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.4rem' }}>每分钟基础产出 (数量)</label>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <input 
                             type="number"
@@ -259,11 +259,11 @@ const FeatureConfig = () => {
                       </div>
                     ) : (
                       <div>
-                        <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.4rem' }}>战力转化系数 (1战力:X资源)</label>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.4rem' }}>价值转化系数 (投入:产出价值比)</label>
                         <input 
-                          type="number"
-                          value={feat.auditParams?.powerCostRatio || 0}
-                          onChange={e => updateFeature(feat.id, { auditParams: { ...feat.auditParams, powerCostRatio: parseInt(e.target.value) || 0 } })}
+                          type="number" step="0.1"
+                          value={feat.auditParams?.valueCostRatio || 0}
+                          onChange={e => updateFeature(feat.id, { auditParams: { ...feat.auditParams, valueCostRatio: parseFloat(e.target.value) || 0 } })}
                           style={{ width: '100%', background: 'rgba(0,0,0,0.3)', border: '1px solid #444', color: 'white', padding: '0.5rem', borderRadius: '4px' }}
                         />
                       </div>
@@ -278,32 +278,49 @@ const FeatureConfig = () => {
                    </div>
                    
                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Clock size={14} /> 预期推演 (基于D7标准玩家)
+                      <Clock size={14} /> 预期推演 (金本位价值 - D7)
                    </div>
 
                    {feat.outputResources?.length > 0 ? (
                      <div>
-                        <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--accent-success)' }}>
-                          +{(state.playerModel.dailyTime * state.playerModel.efficiency * (feat.auditParams?.outputPerMin || 0) * 1).toLocaleString()}
-                        </div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
-                           预期第 7 天单日总产出
-                        </div>
-                        <div style={{ marginTop: '1rem', padding: '0.5rem', background: 'rgba(0,230,118,0.1)', borderRadius: '4px', fontSize: '0.75rem', color: '#00E676' }}>
-                           计：{state.playerModel.dailyTime}min * {state.playerModel.efficiency}x * {feat.auditParams?.outputPerMin || 0}/min
-                        </div>
+                        {(() => {
+                          const resId = feat.outputResources[0]?.resourceId;
+                          const rate = state.resources.find(r => r.id === resId)?.diamondRate || 0;
+                          const totalVal = state.playerModel.dailyTime * state.playerModel.efficiency * (feat.auditParams?.outputPerMin || 0) * rate;
+                          return (
+                            <>
+                              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--accent-success)' }}>
+                                {totalVal.toFixed(1)} <span style={{ fontSize: '1rem' }}>💎</span>
+                              </div>
+                              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
+                                 预期第 7 天单日产出总价值
+                              </div>
+                              <div style={{ marginTop: '1rem', padding: '0.5rem', background: 'rgba(0,230,118,0.1)', borderRadius: '4px', fontSize: '0.75rem', color: '#00E676' }}>
+                                 折算：{(state.playerModel.dailyTime * state.playerModel.efficiency * (feat.auditParams?.outputPerMin || 0)).toLocaleString()} 资源 × {rate} 汇率
+                              </div>
+                            </>
+                          );
+                        })()}
                      </div>
                    ) : (
                      <div>
-                        <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--accent-danger)' }}>
-                          -{(state.playerModel.milestones.day7.targetPowerGap * (feat.auditParams?.powerCostRatio || 0)).toLocaleString()}
-                        </div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
-                           达到第 7 天目标所需刚性消耗
-                        </div>
-                        <div style={{ marginTop: '1rem', padding: '0.5rem', background: 'rgba(255,82,82,0.1)', borderRadius: '4px', fontSize: '0.75rem', color: '#FF5252' }}>
-                           计：{state.playerModel.milestones.day7.targetPowerGap}战力 * {feat.auditParams?.powerCostRatio || 0}系数
-                        </div>
+                        {(() => {
+                          const gap = state.playerModel.milestones.day7.targetValueGap || 0;
+                          const totalVal = gap * (feat.auditParams?.valueCostRatio || 0);
+                          return (
+                            <>
+                              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--accent-danger)' }}>
+                                {totalVal.toFixed(1)} <span style={{ fontSize: '1rem' }}>💎</span>
+                              </div>
+                              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
+                                 达到第 7 天目标所需刚性价值
+                              </div>
+                              <div style={{ marginTop: '1rem', padding: '0.5rem', background: 'rgba(255,82,82,0.1)', borderRadius: '4px', fontSize: '0.75rem', color: '#FF5252' }}>
+                                 计：{gap} 目标价值 × {feat.auditParams?.valueCostRatio || 0} 转化比
+                              </div>
+                            </>
+                          );
+                        })()}
                      </div>
                    )}
                 </div>

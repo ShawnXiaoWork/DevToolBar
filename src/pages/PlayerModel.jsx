@@ -110,7 +110,7 @@ const PlayerModel = () => {
             预期进度阶梯 (Progress Milestones)
           </h3>
           <p style={{ marginBottom: '1.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-            为关键天数设定预期达到的“目标关卡”，并预估为达到该关卡所需要的绝对战力缺口。
+            为关键天数设定预期达到的“目标关卡”，并预估为达到该阶段所需要的**金本位资源总价值 (钻石)**。
           </p>
 
           <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '1rem' }}>
@@ -146,13 +146,13 @@ const PlayerModel = () => {
 
                   <div>
                     <label style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                      <span>战力缺口 (战力点)</span>
+                      <span>价值缺口 (钻石)</span>
                       <Edit3 size={14} />
                     </label>
                     <input 
                       type="number" 
-                      value={data.targetPowerGap}
-                      onChange={(e) => handleMilestoneChange(dayKey, 'targetPowerGap', e.target.value)}
+                      value={data.targetValueGap}
+                      onChange={(e) => handleMilestoneChange(dayKey, 'targetValueGap', e.target.value)}
                       className="feature-input"
                       style={{ padding: '0.5rem', color: 'var(--accent-secondary)' }}
                     />
