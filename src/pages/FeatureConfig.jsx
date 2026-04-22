@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useGame } from '../context/GameContext';
 import {
   PieChart, TrendingUp, AlertCircle, Clock, Layout,
-  BarChart3, ShieldAlert, CheckCircle2, Plus, Trash2, ArrowUpRight, ArrowDownRight, Settings2
+  BarChart3, ShieldAlert, CheckCircle2, Plus, Trash2, ArrowUpRight, ArrowDownRight, Settings2, Activity
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExcelImportPanel from '../components/ExcelImportPanel';
@@ -191,7 +191,7 @@ const FeatureConfig = () => {
                 <button onClick={() => dispatch({ type: 'DELETE_FEATURE', payload: feat.id })} style={{ background: 'none', border: 'none', color: 'var(--accent-danger)', cursor: 'pointer' }}><Trash2 size={18} /></button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
                 {/* Costs & Outputs */}
                 <div>
                   <ResourceWeightEditor 
@@ -210,42 +210,102 @@ const FeatureConfig = () => {
                   />
                 </div>
 
-                {/* Math Model */}
-                <div className="glass-panel" style={{ background: 'rgba(255,255,255,0.02)', padding: '1.5rem' }}>
-                  <h3 style={{ fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Settings2 size={18} color="var(--accent-primary)" /> 经济成长模型
-                  </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div>
-                      <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>模型曲线</label>
-                      <select 
-                        value={feat.growthModel} 
-                        onChange={e => updateFeature(feat.id, { growthModel: e.target.value })}
-                        style={{ width: '100%', background: 'var(--card-bg)', border: '1px solid var(--border-color)', color: 'white', padding: '0.5rem', borderRadius: '4px', marginTop: '0.4rem' }}
-                      >
-                        <option value="linear">线性 (Linear)</option>
-                        <option value="exponential">指数 (Exponential)</option>
-                        <option value="logarithmic">对数 (Logarithmic)</option>
-                        <option value="power">幂函数 (Power)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>成长系数 (K)</label>
-                      <input 
-                        type="number" step="0.1"
-                        value={feat.params.slope || feat.params.base || 1}
-                        onChange={e => {
-                          const val = parseFloat(e.target.value);
-                          updateFeature(feat.id, { params: feat.growthModel === 'linear' ? { slope: val } : { base: val } });
-                        }}
-                        style={{ width: '100%', background: 'var(--card-bg)', border: '1px solid var(--border-color)', color: 'white', padding: '0.5rem', borderRadius: '4px', marginTop: '0.4rem' }}
-                      />
-                    </div>
-                    <div style={{ marginTop: '0.5rem', padding: '0.8rem', background: 'rgba(124,77,255,0.1)', borderRadius: '6px', fontSize: '0.75rem', color: 'var(--accent-secondary)' }}>
-                      <strong>模型提示：</strong>
-                      {feat.growthModel === 'exponential' ? ' 指数成长适合后期爆发性消耗。建议系数在 1.1 - 1.3 之间。' : ' 线性成长适合基础属性提升。'}
+                {/* Math Model & Audit Params */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  <div className="glass-panel" style={{ background: 'rgba(255,255,255,0.02)', padding: '1.25rem' }}>
+                    <h3 style={{ fontSize: '0.95rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Settings2 size={16} color="var(--accent-primary)" /> 经济成长模型
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <select 
+                          value={feat.growthModel} 
+                          onChange={e => updateFeature(feat.id, { growthModel: e.target.value })}
+                          style={{ flex: 1, background: 'var(--card-bg)', border: '1px solid var(--border-color)', color: 'white', padding: '0.4rem', borderRadius: '4px', fontSize: '0.85rem' }}
+                        >
+                          <option value="linear">线性 (Linear)</option>
+                          <option value="exponential">指数 (Exponential)</option>
+                        </select>
+                        <input 
+                          type="number" step="0.1"
+                          value={feat.params.slope || feat.params.base || 1}
+                          onChange={e => {
+                            const val = parseFloat(e.target.value);
+                            updateFeature(feat.id, { params: feat.growthModel === 'linear' ? { slope: val } : { base: val } });
+                          }}
+                          style={{ width: '60px', background: 'var(--card-bg)', border: '1px solid var(--border-color)', color: 'white', padding: '0.4rem', borderRadius: '4px', fontSize: '0.85rem' }}
+                        />
+                      </div>
                     </div>
                   </div>
+
+                  {/* [NEW] 审计参数配置 */}
+                  <div className="glass-panel" style={{ background: 'rgba(124,77,255,0.05)', padding: '1.25rem', border: '1px dashed var(--accent-primary)' }}>
+                    <h3 style={{ fontSize: '0.95rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Activity size={16} color="var(--accent-secondary)" /> 推演参数 (Audit)
+                    </h3>
+                    {feat.outputResources?.length > 0 ? (
+                      <div>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.4rem' }}>每分钟基础产出</label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input 
+                            type="number"
+                            value={feat.auditParams?.outputPerMin || 0}
+                            onChange={e => updateFeature(feat.id, { auditParams: { ...feat.auditParams, outputPerMin: parseInt(e.target.value) || 0 } })}
+                            style={{ flex: 1, background: 'rgba(0,0,0,0.3)', border: '1px solid #444', color: 'white', padding: '0.5rem', borderRadius: '4px' }}
+                          />
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>/min</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.4rem' }}>战力转化系数 (1战力:X资源)</label>
+                        <input 
+                          type="number"
+                          value={feat.auditParams?.powerCostRatio || 0}
+                          onChange={e => updateFeature(feat.id, { auditParams: { ...feat.auditParams, powerCostRatio: parseInt(e.target.value) || 0 } })}
+                          style={{ width: '100%', background: 'rgba(0,0,0,0.3)', border: '1px solid #444', color: 'white', padding: '0.5rem', borderRadius: '4px' }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* [NEW] 预期推演结果 (Live Audit Result) */}
+                <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(0,229,255,0.05) 0%, rgba(0,230,118,0.05) 100%)', padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
+                   <div style={{ position: 'absolute', top: '-10px', right: '-10px', opacity: 0.1 }}>
+                      {feat.outputResources?.length > 0 ? <TrendingUp size={80} /> : <ShieldAlert size={80} />}
+                   </div>
+                   
+                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Clock size={14} /> 预期推演 (基于D7标准玩家)
+                   </div>
+
+                   {feat.outputResources?.length > 0 ? (
+                     <div>
+                        <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--accent-success)' }}>
+                          +{(state.playerModel.dailyTime * state.playerModel.efficiency * (feat.auditParams?.outputPerMin || 0) * 1).toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
+                           预期第 7 天单日总产出
+                        </div>
+                        <div style={{ marginTop: '1rem', padding: '0.5rem', background: 'rgba(0,230,118,0.1)', borderRadius: '4px', fontSize: '0.75rem', color: '#00E676' }}>
+                           计：{state.playerModel.dailyTime}min * {state.playerModel.efficiency}x * {feat.auditParams?.outputPerMin || 0}/min
+                        </div>
+                     </div>
+                   ) : (
+                     <div>
+                        <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--accent-danger)' }}>
+                          -{(state.playerModel.milestones.day7.targetPowerGap * (feat.auditParams?.powerCostRatio || 0)).toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
+                           达到第 7 天目标所需刚性消耗
+                        </div>
+                        <div style={{ marginTop: '1rem', padding: '0.5rem', background: 'rgba(255,82,82,0.1)', borderRadius: '4px', fontSize: '0.75rem', color: '#FF5252' }}>
+                           计：{state.playerModel.milestones.day7.targetPowerGap}战力 * {feat.auditParams?.powerCostRatio || 0}系数
+                        </div>
+                     </div>
+                   )}
                 </div>
               </div>
             </motion.div>

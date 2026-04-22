@@ -10,6 +10,17 @@ const initialState = {
     diamondPerTime: 100,
     timeUnit: "小时"
   },
+  // 基础玩家模型
+  playerModel: {
+    dailyTime: 45, // 每天标准在线时长（分钟）
+    efficiency: 1.0, // 活跃分层效率 (肝帝 1.2, 标准 1.0, 咸鱼 0.6)
+    milestones: {
+      day1: { targetLevel: 5, targetPowerGap: 200 },
+      day3: { targetLevel: 15, targetPowerGap: 800 },
+      day7: { targetLevel: 30, targetPowerGap: 3000 },
+      day30: { targetLevel: 100, targetPowerGap: 20000 }
+    }
+  },
   // 资源字典
   resources: [
     { id: 'res_gold', name: '金币', diamondRate: 0.01 }, // 1金币 = 0.01钻石
@@ -43,7 +54,8 @@ const initialState = {
       outputResources: [], // 初始产出资源
       growthModel: 'exponential',
       maxLevel: 20,
-      params: { base: 1.1 }
+      params: { base: 1.1 },
+      auditParams: { powerCostRatio: 5 } // 1战力缺口需要消耗5粉尘
     },
     {
       id: 'feat_hero',
@@ -57,7 +69,22 @@ const initialState = {
       outputResources: [], // 初始产出资源
       growthModel: 'linear',
       maxLevel: 50,
-      params: { slope: 10 }
+      params: { slope: 10 },
+      auditParams: { powerCostRatio: 15 } // 1战力缺口需要消耗15混合资源
+    },
+    {
+      id: 'feat_afk',
+      name: '挂机收益',
+      type: 'Eco',
+      unlockCondition: { type: 'time', value: 0 },
+      physicalResources: [],
+      outputResources: [
+        { resourceId: 'res_gold', weight: 100 }
+      ],
+      growthModel: 'linear',
+      maxLevel: 50,
+      params: { slope: 10 },
+      auditParams: { outputPerMin: 120 } // 基础每分钟产出 120 金币
     }
   ]
 };
@@ -70,6 +97,19 @@ function gameReducer(state, action) {
       return { ...state, projectName: action.payload };
     case 'UPDATE_BASE_SETTINGS':
       return { ...state, baseSettings: { ...state.baseSettings, ...action.payload } };
+    case 'UPDATE_PLAYER_MODEL':
+      return { ...state, playerModel: { ...state.playerModel, ...action.payload } };
+    case 'UPDATE_MILESTONE':
+      return { 
+        ...state, 
+        playerModel: { 
+          ...state.playerModel, 
+          milestones: { 
+            ...state.playerModel.milestones, 
+            [action.payload.day]: action.payload.data 
+          } 
+        } 
+      };
     case 'ADD_RESOURCE':
       return { ...state, resources: [...state.resources, action.payload] };
     case 'UPDATE_RESOURCE':
