@@ -53,7 +53,35 @@ const initialState = {
       maxLevel: 50,
       params: { slope: 10 }
     }
-  ]
+  ],
+  // 兵种库 (游戏制作辅助)
+  units: [
+    { 
+      id: 'unit_warrior', 
+      name: '近战士兵', 
+      hp: 100, atk: 15, spd: 10, skillPower: 0, 
+      roles: ['前排坦克'], 
+      counters: ['远程输出'],
+      spawnWeight: 50 
+    },
+    { 
+      id: 'unit_archer', 
+      name: '精英弓箭手', 
+      hp: 60, atk: 25, spd: 15, skillPower: 10, 
+      roles: ['远程输出'], 
+      counters: ['召唤者'],
+      spawnWeight: 20 
+    }
+  ],
+  // 关卡平衡配置
+  levelConfig: {
+    baseScore: 100,
+    difficultyFactor: 1.2,
+    spikes: [
+      { level: 10, hpMultiplier: 1.2, atkMultiplier: 1.3, type: 'peak', note: '小 Boss' },
+      { level: 20, hpMultiplier: 1.5, atkMultiplier: 1.5, type: 'peak', note: '大 Boss' }
+    ]
+  }
 };
 
 function gameReducer(state, action) {
@@ -84,7 +112,30 @@ function gameReducer(state, action) {
           m.id === macroId ? { ...m, allocations: { ...m.allocations, [featureId]: percentage } } : m
         )
       };
-    // ... 其他 action
+    // 兵种库管理
+    case 'ADD_UNIT':
+      return { ...state, units: [...state.units, action.payload] };
+    case 'UPDATE_UNIT':
+      return {
+        ...state,
+        units: state.units.map(u => u.id === action.payload.id ? { ...u, ...action.payload } : u)
+      };
+    case 'DELETE_UNIT':
+      return {
+        ...state,
+        units: state.units.filter(u => u.id !== action.payload)
+      };
+    case 'IMPORT_UNITS':
+      return {
+        ...state,
+        units: [...state.units, ...action.payload]
+      };
+    // 关卡配置管理
+    case 'UPDATE_LEVEL_CONFIG':
+      return {
+        ...state,
+        levelConfig: { ...state.levelConfig, ...action.payload }
+      };
     default:
       return state;
   }
@@ -98,7 +149,17 @@ export const GameProvider = ({ children }) => {
     const saved = localStorage.getItem('dev_toolbar_cache');
     if (saved) {
       try {
-        dispatch({ type: 'IMPORT_STATE', payload: JSON.parse(saved) });
+        const parsed = JSON.parse(saved);
+        // 合并旧数据以保证兼容性
+        dispatch({ 
+          type: 'IMPORT_STATE', 
+          payload: {
+            ...initialState,
+            ...parsed,
+            units: parsed.units || initialState.units,
+            levelConfig: parsed.levelConfig || initialState.levelConfig
+          } 
+        });
       } catch (e) {
         console.error('Failed to parse cached state');
       }

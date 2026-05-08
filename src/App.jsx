@@ -4,6 +4,7 @@ import { GameProvider } from './context/GameContext'
 import { AuthProvider } from './context/AuthContext'
 import Dashboard from './pages/Dashboard'
 import Workbench from './pages/Workbench'
+import LevelMaker from './pages/LevelMaker'
 import AccountPanel from './components/Account/AccountPanel'
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
     switch(activePage) {
       case 'dashboard': return <Dashboard />
       case 'workbench': return <Workbench />
+      case 'level-maker': return <LevelMaker />
       default: return <Workbench />
     }
   }
@@ -29,6 +31,7 @@ function App() {
             <nav className="nav">
               <span className={`nav-link ${activePage === 'dashboard' ? 'active' : ''}`} onClick={() => setActivePage('dashboard')}>数据概览</span>
               <span className={`nav-link ${activePage === 'workbench' ? 'active' : ''}`} onClick={() => setActivePage('workbench')}>经济工作台</span>
+              <span className={`nav-link ${activePage === 'level-maker' ? 'active' : ''}`} onClick={() => setActivePage('level-maker')}>关卡平衡</span>
             </nav>
 
             <div className="header-actions">
