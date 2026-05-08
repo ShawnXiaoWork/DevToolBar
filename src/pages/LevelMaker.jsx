@@ -111,7 +111,7 @@ const LevelMaker = () => {
   const [editingUnit, setEditingUnit] = useState(null);
   const [previewLevel, setPreviewLevel] = useState(1);
   const [previewRange, setPreviewRange] = useState(20);
-  const [unitFilter, setUnitFilter] = useState({ name: '', roles: [], sortBy: 'score', sortDir: 'desc' });
+  const [unitFilter, setUnitFilter] = useState({ name: '', roles: [], sortBy: 'id', sortDir: 'asc' });
 
   // --- 兵种规划状态 ---
   const [roleWeights, setRoleWeights] = useState({
@@ -192,6 +192,9 @@ const LevelMaker = () => {
         switch (unitFilter.sortBy) {
           case 'hp': valA = a.hp; valB = b.hp; break;
           case 'atk': valA = a.atk; valB = b.atk; break;
+          case 'atkSpeed': valA = a.atkSpeed || 0; valB = b.atkSpeed || 0; break;
+          case 'atkRange': valA = a.atkRange || 0; valB = b.atkRange || 0; break;
+          case 'detRange': valA = a.detRange || 0; valB = b.detRange || 0; break;
           case 'spd': valA = a.spd; valB = b.spd; break;
           case 'skillPower': valA = a.skillPower; valB = b.skillPower; break;
           case 'score': valA = calculatePowerScore(a); valB = calculatePowerScore(b); break;
@@ -232,10 +235,14 @@ const LevelMaker = () => {
       atk: Number(formData.get('atk')),
       spd: Number(formData.get('spd')),
       skillPower: Number(formData.get('skillPower')),
+      atkSpeed: Number(formData.get('atkSpeed') || 1.0),
+      atkRange: Number(formData.get('atkRange') || 100),
+      detRange: Number(formData.get('detRange') || 200),
       roles: formData.get('roles').split(',').map(s => {
         const trimmed = s.trim();
         return isNaN(trimmed) ? trimmed : Number(trimmed);
       }),
+      armyTag: Number(formData.get('armyTag') || 1),
       spawnWeight: Number(formData.get('spawnWeight'))
     };
 
@@ -293,9 +300,13 @@ const LevelMaker = () => {
               name: row.name || row.Name || '未命名',
               hp: Number(row.hp || row.Hp || row.HP || 0),
               atk: Number(row.atk || row.Atk || row.Attack || 0),
+              atkSpeed: Number(row.atkSpeed || row.AtkSpeed || row.ASP || 1.0),
+              atkRange: Number(row.atkRange || row.AtkRange || row.ARNG || 100),
+              detRange: Number(row.detRange || row.DetRange || row.DRNG || 200),
               spd: Number(row.spd || row.Spd || row.Speed || 0),
               skillPower: Number(row.skillPower || row.SkillPower || 0),
-              roles: row.roles ? String(row.roles).split('|').map(r => r.trim()) : (row.ArmyTag ? String(row.ArmyTag).split('|').map(r => r.trim()) : []),
+              roles: row.Race ? String(row.Race).split('|').map(r => isNaN(r) ? r.trim() : Number(r)) : (row.roles ? String(row.roles).split('|').map(r => isNaN(r) ? r.trim() : Number(r)) : []),
+              armyTag: Number(row.ArmyTag || row.armyTag || 1),
               spawnWeight: Number(row.spawnWeight || row.SpawnWeight || 50)
             };
           }).filter(u => u.name !== '未命名' && (u.hp > 0 || u.atk > 0));
@@ -699,18 +710,18 @@ const LevelMaker = () => {
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px'
                 }}>
-                  <span>ID</span>
-                  <span>兵种名称</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('id')}>ID {unitFilter.sortBy === 'id' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('name')}>名称 {unitFilter.sortBy === 'name' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
                   <span>ArmyTag</span>
-                  <span>HP</span>
-                  <span>ATK</span>
-                  <span>ASP</span>
-                  <span>ARNG</span>
-                  <span>DRNG</span>
-                  <span>SPD</span>
-                  <span>战力评分</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('hp')}>HP {unitFilter.sortBy === 'hp' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('atk')}>ATK {unitFilter.sortBy === 'atk' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('atkSpeed')}>ASP {unitFilter.sortBy === 'atkSpeed' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('atkRange')}>ARNG {unitFilter.sortBy === 'atkRange' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('detRange')}>DRNG {unitFilter.sortBy === 'detRange' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('spd')}>SPD {unitFilter.sortBy === 'spd' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('score')}>评分 {unitFilter.sortBy === 'score' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
                   <span>职能标签</span>
-                  <span>权重</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('weight')}>权重 {unitFilter.sortBy === 'weight' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
                   <span style={{ textAlign: 'right' }}>管理</span>
                 </div>
                 <div className="table-body" style={{ maxHeight: 'calc(100vh - 450px)', overflowY: 'auto' }}>
@@ -794,13 +805,33 @@ const LevelMaker = () => {
                           <input type="number" name="spd" defaultValue={editingUnit.spd || 10} required />
                         </div>
                         <div className="input-group">
-                          <label>技能强度</label>
+                          <label>技能强度 (SKL)</label>
                           <input type="number" name="skillPower" defaultValue={editingUnit.skillPower || 0} required />
                         </div>
                       </div>
-                      <div className="input-group">
-                        <label>职能标签 (逗号分隔)</label>
-                        <input name="roles" defaultValue={editingUnit.roles?.join(', ') || '近战, 物理'} required />
+                      <div className="input-row">
+                        <div className="input-group">
+                          <label>攻击速度 (ASP)</label>
+                          <input type="number" step="0.1" name="atkSpeed" defaultValue={editingUnit.atkSpeed || 1.0} required />
+                        </div>
+                        <div className="input-group">
+                          <label>攻击范围 (ARNG)</label>
+                          <input type="number" name="atkRange" defaultValue={editingUnit.atkRange || 100} required />
+                        </div>
+                        <div className="input-group">
+                          <label>索敌范围 (DRNG)</label>
+                          <input type="number" name="detRange" defaultValue={editingUnit.detRange || 200} required />
+                        </div>
+                      </div>
+                      <div className="input-row">
+                        <div className="input-group">
+                          <label>职能标签 (数字ID, 逗号分隔)</label>
+                          <input name="roles" defaultValue={editingUnit.roles?.join(', ') || '0'} required />
+                        </div>
+                        <div className="input-group">
+                          <label>ArmyTag (1-4, 9)</label>
+                          <input type="number" name="armyTag" defaultValue={editingUnit.armyTag || 1} required />
+                        </div>
                       </div>
                       <div className="input-group">
                         <label>出现权重 (Spawn Weight)</label>
