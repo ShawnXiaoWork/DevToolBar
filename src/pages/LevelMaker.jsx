@@ -147,13 +147,20 @@ const LevelMaker = () => {
     bossFrequency: 10 // 每 10 个普通单位生成一个 Boss
   });
 
-  const ADJECTIVES = ['狂暴的', '迅捷的', '重甲的', '虚弱的', '致命的', '坚固的', '远古的', '受污染的', '机械的', '幽灵般的'];
-  const BOSS_PREFIXES = ['【领主】', '【噩梦】', '【终焉】', '【暴君】', '【古神】'];
-  const ROLE_NAMES = {
-    Tank: '守护者',
-    Warrior: '征服者',
-    DPS: '毁灭者',
-    CC: '干扰者'
+  const ROLE_NAME_POOLS = {
+    Tank: ['石像鬼', '巨盾兵', '山岭巨人', '圣骑士', '憎恶', '铁甲蛹', '岩石怪', '禁卫', '守望者', '龙龟'],
+    Warrior: ['剑士', '狂战士', '恶魔猎手', '骷髅兵', '影舞者', '先遣兵', '处刑人', '狼人', '武士', '角斗士'],
+    DPS: ['希尔瓦娜斯', '寒冰射手', '狙击手', '火枪手', '巫妖', '法术大师', '游侠', '投石车', '暗影牧师', '元素使'],
+    CC: ['寒冰法师', '术士', '德鲁伊', '蜘蛛女王', '萨满', '催眠者', '粘液怪', '沉默者', '药剂师', '先知']
+  };
+
+  const BOSS_PREFIXES = ['【极秘项目】', '【变异主宰】', '【钢铁暴君】', '【末日先兆】', '【零号病毒】', '【虚空母体】'];
+
+  const ROLE_SYMBOLS = {
+    Tank: '🛡️',
+    Warrior: '⚔️',
+    DPS: '🎯',
+    CC: '🌀'
   };
 
   const ROLE_ID_RANGES = {
@@ -1166,15 +1173,16 @@ const LevelMaker = () => {
                             const hpMut = 1 + (Math.random() * 2 - 1) * matrixConfig.randomness;
                             const atkMut = 1 + (Math.random() * 2 - 1) * matrixConfig.randomness;
                             
-                            const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+                            const pool = ROLE_NAME_POOLS[role] || ['未知单位'];
+                            const baseName = pool[Math.floor(Math.random() * pool.length)];
                             const bossPrefix = isBoss ? BOSS_PREFIXES[Math.floor(Math.random() * BOSS_PREFIXES.length)] : '';
-                            const roleName = ROLE_NAMES[role];
+                            const symbol = ROLE_SYMBOLS[role] || '';
                             
                             const finalId = getNextIdForRole(isBoss ? 'Boss' : role, newUnits);
 
                             newUnits.push({
                               id: finalId,
-                              name: `${bossPrefix}${adj}${roleName} T${tier}`,
+                              name: `${bossPrefix}${baseName}${symbol} T${tier}`,
                               hp: Math.round(derivationParams.baseHp * weights.hp * tierMultiplier * hpMut * bossMultiplier),
                               atk: Math.round(derivationParams.baseAtk * weights.atk * tierMultiplier * atkMut * bossAtkMultiplier),
                               spd: derivationParams.baseSpd + Math.floor(Math.random() * 5),
