@@ -109,14 +109,18 @@ const initialState = {
       id: '10001',
       name: '近战士兵',
       hp: 100, atk: 15, spd: 10, skillPower: 0,
-      roles: ['Tank'],
+      atkSpeed: 1.0, atkRange: 100, detRange: 200,
+      roles: [0],
+      armyTag: 1,
       spawnWeight: 50
     },
     {
       id: '30001',
       name: '精英弓箭手',
       hp: 60, atk: 25, spd: 15, skillPower: 10,
-      roles: ['DPS'],
+      atkSpeed: 2.0, atkRange: 600, detRange: 700,
+      roles: [2],
+      armyTag: 1,
       spawnWeight: 20
     }
   ],

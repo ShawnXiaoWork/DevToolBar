@@ -1,14 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { useGame } from '../context/GameContext';
-import { 
-  Users, 
-  Target, 
-  BarChart3, 
-  ShieldAlert, 
-  Plus, 
+import {
+  Users,
+  Target,
+  BarChart3,
+  ShieldAlert,
+  Plus,
   Upload,
-  Trash2, 
+  Trash2,
   Edit3,
   TrendingUp,
   Settings,
@@ -22,13 +22,13 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   PieChart,
   Pie,
@@ -40,10 +40,16 @@ import {
  * 公式: (生命*0.1 + 攻击) * (1 + 攻速/100) * (1 + 技能强度/100)
  */
 const calculatePowerScore = (unit) => {
-  const base = (unit.hp * 0.1) + unit.atk;
+  // 战力基础 = (生命*0.1 + 攻击*攻速) 
+  // 攻速对战力有直接线性增益
+  const base = (unit.hp * 0.1) + (unit.atk * (unit.atkSpeed || 1.0));
   const multipliers = (1 + (unit.spd || 0) / 100) * (1 + (unit.skillPower || 0) / 100);
   let score = Math.round(base * multipliers);
-  if (unit.roles && unit.roles.some(r => r.includes('CC') || r.includes('控制'))) {
+  
+  // 机制加成：攻击范围和索敌范围在特定区间有溢价 (例如手长优势)
+  if (unit.atkRange > 400) score = Math.round(score * 1.15); 
+  
+  if (unit.roles && unit.roles.some(r => r === 3 || (typeof r === 'string' && (r.includes('CC') || r.includes('控制'))))) {
     score = Math.round(score * 1.5); // CC 机制权重附加
   }
   return score;
@@ -60,10 +66,10 @@ const calculatePowerScore = (unit) => {
 const getLevelBudget = (level, config) => {
   const { baseScore, difficultyFactor, spikes } = config;
   const interval = 10; // 假设每10关为一个章节循环
-  
+
   // A. 基础曲线 (幂函数基础)
   let budget = baseScore * Math.pow(level, difficultyFactor);
-  
+
   // B. 难度越迁逻辑
   // 1. 累计台阶系数 (Tier Shift / Chapter Shift)
   const steps = (spikes || []).filter(s => s.type === 'step' && level >= s.level);
@@ -73,7 +79,7 @@ const getLevelBudget = (level, config) => {
     stepHpMultiplier *= (s.hpMultiplier || 1);
     stepAtkMultiplier *= (s.atkMultiplier || 1);
   });
-  
+
   // 综合台阶系数 = HP倍率 * ATK倍率
   budget *= (stepHpMultiplier * stepAtkMultiplier);
 
@@ -82,13 +88,13 @@ const getLevelBudget = (level, config) => {
   if (currentPeak) {
     budget *= (currentPeak.hpMultiplier || 1) * (currentPeak.atkMultiplier || 1);
   }
-  
+
   // C. 心流调节逻辑 (Flow Control) - 数值策划核心
   // 如果是 Boss 后的第一关 (例如 11, 21...)，给予一定的难度下调，让玩家感受“割草”快感
   if (level > 1 && (level - 1) % interval === 0) {
     budget *= 0.85; // 15% 的难度回落 (Valley)
   }
-  
+
   // 如果是临近 Boss 的关卡 (例如 9, 19...)，提前增加压力感 (Tension)
   if (level % interval === 9) {
     budget *= 1.1; // 10% 的压力上升
@@ -109,15 +115,15 @@ const LevelMaker = () => {
 
   // --- 兵种规划状态 ---
   const [roleWeights, setRoleWeights] = useState({
-    Tank: { hp: 1.6, atk: 0.4, cc: 0 },
-    Warrior: { hp: 1.0, atk: 1.0, cc: 0 },
-    DPS: { hp: 0.5, atk: 1.5, cc: 0 },
-    CC: { hp: 0.7, atk: 0.6, cc: 0.7 }
+    0: { hp: 1.6, atk: 0.4, cc: 0, atkSpeed: 0.8, atkRange: 100, detRange: 200 },
+    1: { hp: 1.0, atk: 1.0, cc: 0, atkSpeed: 1.2, atkRange: 100, detRange: 200 },
+    2: { hp: 0.5, atk: 1.5, cc: 0, atkSpeed: 2.0, atkRange: 600, detRange: 700 },
+    3: { hp: 0.7, atk: 0.6, cc: 0.7, atkSpeed: 1.5, atkRange: 400, detRange: 500 }
   });
   const [rosterTemplates, setRosterTemplates] = useState([
-    { id: 't1', name: '均衡阵型', Tank: 0.2, Warrior: 0.3, DPS: 0.4, CC: 0.1 },
-    { id: 't2', name: '高压阵型', Tank: 0.1, Warrior: 0.0, DPS: 0.8, CC: 0.1 },
-    { id: 't3', name: '绞肉机阵型', Tank: 0.0, Warrior: 0.7, DPS: 0.0, CC: 0.3 }
+    { id: 't1', name: '均衡阵型', 0: 0.2, 1: 0.3, 2: 0.4, 3: 0.1 },
+    { id: 't2', name: '高压阵型', 0: 0.1, 1: 0.0, 2: 0.8, 3: 0.1 },
+    { id: 't3', name: '绞肉机阵型', 0: 0.0, 1: 0.7, 2: 0.0, 3: 0.3 }
   ]);
   const [activeTemplateId, setActiveTemplateId] = useState('t1');
   const [validationConfig, setValidationConfig] = useState({
@@ -131,7 +137,7 @@ const LevelMaker = () => {
     baseAtk: 10,
     baseSpd: 0,
     baseSkillPower: 0,
-    targetRole: 'Tank',
+    targetRole: 0,
     unitName: '衍生肉盾'
   });
   const [matrixConfig, setMatrixConfig] = useState({
@@ -139,37 +145,25 @@ const LevelMaker = () => {
     updateFrequency: 5,
     randomness: 0.2,
     roleDistribution: {
-      Tank: 0.2,
-      Warrior: 0.25,
-      DPS: 0.4,
-      CC: 0.15
+      0: 0.2,
+      1: 0.25,
+      2: 0.4,
+      3: 0.15
     },
     bossFrequency: 10 // 每 10 个普通单位生成一个 Boss
   });
 
   const ROLE_NAME_POOLS = {
-    Tank: ['石像鬼', '巨盾兵', '山岭巨人', '圣骑士', '憎恶', '铁甲蛹', '岩石怪', '禁卫', '守望者', '龙龟'],
-    Warrior: ['剑士', '狂战士', '恶魔猎手', '骷髅兵', '影舞者', '先遣兵', '处刑人', '狼人', '武士', '角斗士'],
-    DPS: ['希尔瓦娜斯', '寒冰射手', '狙击手', '火枪手', '巫妖', '法术大师', '游侠', '投石车', '暗影牧师', '元素使'],
-    CC: ['寒冰法师', '术士', '德鲁伊', '蜘蛛女王', '萨满', '催眠者', '粘液怪', '沉默者', '药剂师', '先知']
+    0: ['石像鬼', '巨盾兵', '山岭巨人', '圣骑士', '憎恶', '铁甲蛹', '岩石怪', '禁卫', '守望者', '龙龟'],
+    1: ['剑士', '狂战士', '恶魔猎手', '骷髅兵', '影舞者', '先遣兵', '处刑人', '狼人', '武士', '角斗士'],
+    2: ['希尔瓦娜斯', '寒冰射手', '狙击手', '火枪手', '巫妖', '法术大师', '游侠', '投石车', '暗影牧师', '元素使'],
+    3: ['寒冰法师', '术士', '德鲁伊', '蜘蛛女王', '萨满', '催眠者', '粘液怪', '沉默者', '药剂师', '先知']
   };
 
+  const ROLE_LABELS = { 0: 'Tank', 1: 'Warrior', 2: 'DPS', 3: 'CC' };
+  const ROLE_SYMBOLS = { 0: '🛡️', 1: '⚔️', 2: '🎯', 3: '🌀' };
+  const ROLE_ID_RANGES = { 0: 10000, 1: 20000, 2: 30000, 3: 40000, Boss: 90000 };
   const BOSS_PREFIXES = ['【极秘项目】', '【变异主宰】', '【钢铁暴君】', '【末日先兆】', '【零号病毒】', '【虚空母体】'];
-
-  const ROLE_SYMBOLS = {
-    Tank: '🛡️',
-    Warrior: '⚔️',
-    DPS: '🎯',
-    CC: '🌀'
-  };
-
-  const ROLE_ID_RANGES = {
-    Tank: 10000,
-    Warrior: 20000,
-    DPS: 30000,
-    CC: 40000,
-    Boss: 90000
-  };
 
   const getNextIdForRole = (role, currentBatch = []) => {
     const rangeStart = ROLE_ID_RANGES[role] || 50000;
@@ -187,15 +181,15 @@ const LevelMaker = () => {
       .filter(u => {
         const matchName = u.name.toLowerCase().includes(unitFilter.name.toLowerCase());
         // 多选逻辑：如果没选则匹配全部，如果选了则匹配包含任意一个选中标签的兵种
-        const matchRoles = unitFilter.roles.length === 0 || 
-                          unitFilter.roles.some(r => u.roles.includes(r));
+        const matchRoles = unitFilter.roles.length === 0 ||
+          unitFilter.roles.some(r => u.roles.includes(r));
         return matchName && matchRoles;
       })
       .sort((a, b) => {
         const dir = unitFilter.sortDir === 'asc' ? 1 : -1;
         let valA, valB;
-        
-        switch(unitFilter.sortBy) {
+
+        switch (unitFilter.sortBy) {
           case 'hp': valA = a.hp; valB = b.hp; break;
           case 'atk': valA = a.atk; valB = b.atk; break;
           case 'spd': valA = a.spd; valB = b.spd; break;
@@ -203,13 +197,13 @@ const LevelMaker = () => {
           case 'score': valA = calculatePowerScore(a); valB = calculatePowerScore(b); break;
           case 'name': return a.name.localeCompare(b.name) * dir;
           case 'weight': valA = a.spawnWeight; valB = b.spawnWeight; break;
-          case 'id': 
-            valA = parseInt(a.id) || 0; 
-            valB = parseInt(b.id) || 0; 
+          case 'id':
+            valA = parseInt(a.id) || 0;
+            valB = parseInt(b.id) || 0;
             break;
           default: valA = calculatePowerScore(a); valB = calculatePowerScore(b);
         }
-        
+
         return (valA - valB) * dir;
       });
   }, [state.units, unitFilter]);
@@ -238,7 +232,10 @@ const LevelMaker = () => {
       atk: Number(formData.get('atk')),
       spd: Number(formData.get('spd')),
       skillPower: Number(formData.get('skillPower')),
-      roles: formData.get('roles').split(',').map(s => s.trim()),
+      roles: formData.get('roles').split(',').map(s => {
+        const trimmed = s.trim();
+        return isNaN(trimmed) ? trimmed : Number(trimmed);
+      }),
       spawnWeight: Number(formData.get('spawnWeight'))
     };
 
@@ -266,7 +263,7 @@ const LevelMaker = () => {
           const content = event.target.result;
           const lines = content.split('\n');
           const headers = lines[0].split(',').map(h => h.trim());
-          
+
           importedUnits = lines.slice(1).filter(line => line.trim()).map(line => {
             const values = line.split(',');
             const unit = {};
@@ -293,12 +290,12 @@ const LevelMaker = () => {
           importedUnits = jsonData.map(row => {
             return {
               id: `unit_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-              name: row.name || row.Name || '未命名', 
-              hp: Number(row.hp || row.Hp || row.HP || 0), 
-              atk: Number(row.atk || row.Atk || row.Attack || 0), 
-              spd: Number(row.spd || row.Spd || row.Speed || 0), 
+              name: row.name || row.Name || '未命名',
+              hp: Number(row.hp || row.Hp || row.HP || 0),
+              atk: Number(row.atk || row.Atk || row.Attack || 0),
+              spd: Number(row.spd || row.Spd || row.Speed || 0),
               skillPower: Number(row.skillPower || row.SkillPower || 0),
-              roles: row.roles ? String(row.roles).split('|').map(r => r.trim()) : (row.ArmyTag ? String(row.ArmyTag).split('|').map(r => r.trim()) : []), 
+              roles: row.roles ? String(row.roles).split('|').map(r => r.trim()) : (row.ArmyTag ? String(row.ArmyTag).split('|').map(r => r.trim()) : []),
               spawnWeight: Number(row.spawnWeight || row.SpawnWeight || 50)
             };
           }).filter(u => u.name !== '未命名' && (u.hp > 0 || u.atk > 0));
@@ -323,16 +320,18 @@ const LevelMaker = () => {
 
   const exportToExcel = (unitsData, filename = 'units_export.xlsx') => {
     const exportData = unitsData.map(u => ({
-      id: u.id,
-      name: u.name,
-      hp: u.hp,
-      atk: u.atk,
-      spd: u.spd,
-      skillPower: u.skillPower,
-      roles: u.roles.join('|'),
-      spawnWeight: u.spawnWeight || 50
+      Id: u.id,
+      ArmyTag: u.armyTag || 0,
+      Power: calculatePowerScore(u),
+      Hp: u.hp,
+      Attack: u.atk,
+      AtkSpeed: u.atkSpeed || 1.0,
+      AtkRange: u.atkRange || 100,
+      DetRange: u.detRange || 200,
+      Race: Array.isArray(u.roles) ? u.roles.join('|') : u.roles,
+      Note: u.name
     }));
-    
+
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Units");
@@ -347,8 +346,8 @@ const LevelMaker = () => {
       '是否Boss关': lp.isBossLevel ? '是' : '否',
       'HP系数': lp.hpCoeff.toFixed(2),
       'ATK系数': lp.atkCoeff.toFixed(2),
-      '阵容构成': lp.selected.map(s => `${s.name}(ID:${s.id}) x${s.count}`).join('; '),
-      '单位详情': lp.selected.map(s => `[${s.name}: HP:${s.hp}, ATK:${s.atk}]`).join(' | ')
+      '阵容构成': lp.selected.map(s => `${s.name}(ID:${s.Id}) x${s.count}`).join('; '),
+      '单位详情': lp.selected.map(s => `[${s.name}: HP:${s.Hp}, ATK:${s.Attack}]`).join(' | ')
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
@@ -372,26 +371,28 @@ const LevelMaker = () => {
   const analysisResult = useMemo(() => {
     const budget = getLevelBudget(previewLevel, levelConfig);
     const template = rosterTemplates.find(t => t.id === activeTemplateId) || rosterTemplates[0];
-    
+
     // 简单配比算法：
     // a. 筛选所有兵种并计算分值
     const scoredUnits = state.units.map(u => ({ ...u, score: calculatePowerScore(u) }));
-    
+
     const selected = [];
     let totalCount = 0;
     let totalHp = 0;
 
     // 按模版配比填充
-    ['Tank', 'Warrior', 'DPS', 'CC'].forEach(roleKey => {
-      const roleBudget = budget * (template[roleKey] || 0);
+    [0, 1, 2, 3].forEach(roleId => {
+      const roleBudget = budget * (template[roleId] || 0);
+      const roleKey = ROLE_LABELS[roleId];
       if (roleBudget <= 0) return;
 
-      // 找出符合该职能的兵种
+      // 找出符合该职能的兵种 (改为匹配整数 ID)
       let roleUnits = scoredUnits.filter(u => {
-        if (roleKey === 'Tank') return u.roles.some(r => r.includes('肉盾') || r.includes('坦克') || r.includes('Tank') || r.includes('1'));
-        if (roleKey === 'Warrior') return u.roles.some(r => r.includes('战士') || r.includes('Warrior') || r.includes('近战'));
-        if (roleKey === 'DPS') return u.roles.some(r => r.includes('输出') || r.includes('DPS') || r.includes('射手') || r.includes('2'));
-        if (roleKey === 'CC') return u.roles.some(r => r.includes('控制') || r.includes('CC') || r.includes('辅助'));
+        const roles = Array.isArray(u.roles) ? u.roles : [];
+        if (roleKey === 'Tank') return roles.includes(0) || roles.includes('0');
+        if (roleKey === 'Warrior') return roles.includes(1) || roles.includes('1');
+        if (roleKey === 'DPS') return roles.includes(2) || roles.includes('2');
+        if (roleKey === 'CC') return roles.includes(3) || roles.includes('3');
         return false;
       });
 
@@ -422,19 +423,19 @@ const LevelMaker = () => {
     const warnings = [];
     const avgScore = budget / (totalCount || 1);
     const estimatedDuration = totalHp / (validationConfig.expectedDPS || 1);
-    
+
     if (avgScore > 200) warnings.push({ type: 'danger', text: '当前关卡单位战力过高，可能会造成玩家瞬间死亡，建议增加杂鱼单位比例。' });
     if (!pieData.some(d => d.name === 'Tank')) warnings.push({ type: 'warning', text: '关卡缺乏前排抗伤单位，远程玩家可能会轻松风筝全场。' });
-    
+
     // 密度验证
-    if (totalCount > validationConfig.maxDensity) warnings.push({ type: 'danger', text: `同屏怪物数量 (${totalCount}) 超过上限 (${validationConfig.maxDensity})，可能会导致严重的渲染压力！`});
-    if (totalCount < validationConfig.minDensity) warnings.push({ type: 'warning', text: `同屏怪物数量过少 (${totalCount})，可能导致关卡空洞。`});
-    
+    if (totalCount > validationConfig.maxDensity) warnings.push({ type: 'danger', text: `同屏怪物数量 (${totalCount}) 超过上限 (${validationConfig.maxDensity})，可能会导致严重的渲染压力！` });
+    if (totalCount < validationConfig.minDensity) warnings.push({ type: 'warning', text: `同屏怪物数量过少 (${totalCount})，可能导致关卡空洞。` });
+
     // 时长验证
     if (estimatedDuration > validationConfig.targetDuration * 1.5) {
-      warnings.push({ type: 'danger', text: `预测战斗时长 ${estimatedDuration.toFixed(1)}s 远超预期 ${validationConfig.targetDuration}s，建议下调难度系数或提升玩家期望DPS。`});
+      warnings.push({ type: 'danger', text: `预测战斗时长 ${estimatedDuration.toFixed(1)}s 远超预期 ${validationConfig.targetDuration}s，建议下调难度系数或提升玩家期望DPS。` });
     } else if (estimatedDuration < validationConfig.targetDuration * 0.5) {
-      warnings.push({ type: 'info', text: `预测战斗时长 ${estimatedDuration.toFixed(1)}s 较短，玩家可能会迅速清场。`});
+      warnings.push({ type: 'info', text: `预测战斗时长 ${estimatedDuration.toFixed(1)}s 较短，玩家可能会迅速清场。` });
     }
 
     return { selected, budget, pieData, warnings, estimatedDuration, totalCount };
@@ -443,7 +444,7 @@ const LevelMaker = () => {
   // 3. 全关卡自动规划规划算法 (基于阵容模版)
   const fullLevelPlan = useMemo(() => {
     if (state.units.length === 0) return [];
-    
+
     const template = rosterTemplates.find(t => t.id === activeTemplateId) || rosterTemplates[0];
 
     // 辅助规则：根据关卡决定当前主打的 Tier
@@ -457,7 +458,7 @@ const LevelMaker = () => {
     return Array.from({ length: previewRange }, (_, i) => {
       const level = i + 1;
       const targetTier = getTargetTier(level);
-      
+
       const steps = (levelConfig.spikes || []).filter(s => s.type === 'step' && level >= s.level);
       let hpCoeff = 1;
       let atkCoeff = 1;
@@ -465,7 +466,7 @@ const LevelMaker = () => {
         hpCoeff *= (s.hpMultiplier || 1);
         atkCoeff *= (s.atkMultiplier || 1);
       });
-      
+
       const peak = (levelConfig.spikes || []).find(s => s.level === level && s.type === 'peak');
       if (peak) {
         hpCoeff *= (peak.hpMultiplier || 1);
@@ -473,7 +474,7 @@ const LevelMaker = () => {
       }
 
       const budget = getLevelBudget(level, levelConfig);
-      
+
       const scaledUnits = state.units.map(u => {
         const scaledUnit = {
           ...u,
@@ -489,35 +490,38 @@ const LevelMaker = () => {
       const selected = [];
       const isBossLevel = !!peak;
 
-      ['Tank', 'Warrior', 'DPS', 'CC'].forEach(roleKey => {
-        const roleBudget = budget * (template[roleKey] || 0);
+      [0, 1, 2, 3].forEach(roleId => {
+        const roleBudget = budget * (template[roleId] || 0);
+        const roleKey = ROLE_LABELS[roleId];
         if (roleBudget <= 0) return;
 
-        // 1. 职能过滤
+        // 1. 职能过滤 (匹配整数 ID)
         let roleUnits = scaledUnits.filter(u => {
-          if (roleKey === 'Tank') return u.roles.some(r => r.includes('Tank') || r.includes('肉盾') || r.includes('坦克'));
-          if (roleKey === 'Warrior') return u.roles.some(r => r.includes('Warrior') || r.includes('战士') || r.includes('近战'));
-          if (roleKey === 'DPS') return u.roles.some(r => r.includes('DPS') || r.includes('输出') || r.includes('射手'));
-          if (roleKey === 'CC') return u.roles.some(r => r.includes('CC') || r.includes('控制') || r.includes('辅助'));
+          const roles = Array.isArray(u.roles) ? u.roles : [];
+          if (roleKey === 'Tank') return roles.includes(0) || roles.includes('0');
+          if (roleKey === 'Warrior') return roles.includes(1) || roles.includes('1');
+          if (roleKey === 'DPS') return roles.includes(2) || roles.includes('2');
+          if (roleKey === 'CC') return roles.includes(3) || roles.includes('3');
           return false;
         });
 
         if (roleUnits.length === 0) roleUnits = scaledUnits;
 
-        // 2. 制作人规则：如果是 Boss 关，优先选 Boss 标签的单位
+        // 2. 制作人规则：如果是 Boss 关，优先选 Boss 标签的单位 (ArmyTag 9)
         let pool = roleUnits;
         if (isBossLevel) {
-          const bossPool = pool.filter(u => u.roles.includes('Boss'));
+          const bossPool = pool.filter(u => u.armyTag === 9);
           if (bossPool.length > 0) pool = bossPool;
         }
 
-        // 3. 制作人规则：优先选当前 Tier 的单位，模拟成长感
-        const tierPool = pool.filter(u => u.roles.includes(targetTier));
+        // 3. 制作人规则：优先选当前 Tier 的单位 (ArmyTag 1-4)
+        const targetTierInt = Number(targetTier.replace('T', ''));
+        const tierPool = pool.filter(u => u.armyTag === targetTierInt);
         if (tierPool.length > 0) pool = tierPool;
 
         // 4. 制作人规则：每 5 关引入感 (通过随机种子或偏移量选择，这里简化为随机)
         const unit = pool[Math.floor(Math.random() * pool.length)];
-        
+
         if (unit && unit.scaledScore > 0) {
           let exactCount = roleBudget / unit.scaledScore;
           let count = Math.ceil(exactCount);
@@ -556,7 +560,7 @@ const LevelMaker = () => {
         <AnimatePresence mode="wait">
           {/* 1. 兵种建模库 */}
           {activeTab === 'units' && (
-            <motion.div 
+            <motion.div
               key="units"
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
@@ -566,10 +570,10 @@ const LevelMaker = () => {
               <div className="action-bar">
                 <h2 style={{ fontSize: '1.2rem' }}>兵种定义 ({state.units.length})</h2>
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
-                  <input 
-                    type="file" 
-                    id="unit-import" 
-                    style={{ display: 'none' }} 
+                  <input
+                    type="file"
+                    id="unit-import"
+                    style={{ display: 'none' }}
                     accept=".json,.csv,.xlsx,.xls"
                     onChange={handleImport}
                   />
@@ -596,16 +600,16 @@ const LevelMaker = () => {
               <div className="filter-toolbar glass" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', marginBottom: '1.5rem', borderRadius: '12px' }}>
                 <div style={{ display: 'flex', gap: '1rem', width: '100%', alignItems: 'center' }}>
                   <div style={{ flex: 3 }}>
-                    <input 
-                      type="text" 
-                      placeholder="搜索兵种名称..." 
+                    <input
+                      type="text"
+                      placeholder="搜索兵种名称..."
                       value={unitFilter.name}
                       onChange={(e) => setUnitFilter({ ...unitFilter, name: e.target.value })}
                       style={{ width: '100%', padding: '8px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'white' }}
                     />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <select 
+                    <select
                       value={unitFilter.sortBy}
                       onChange={(e) => setUnitFilter({ ...unitFilter, sortBy: e.target.value })}
                       style={{ width: '100%', padding: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'white' }}
@@ -623,7 +627,7 @@ const LevelMaker = () => {
                       筛选 ArmyTag: {unitFilter.roles.length > 0 ? `(已选 ${unitFilter.roles.length} 个)` : '(全选)'}
                     </span>
                     {unitFilter.roles.length > 0 && (
-                      <button 
+                      <button
                         onClick={() => setUnitFilter({ ...unitFilter, roles: [] })}
                         style={{ fontSize: '0.7rem', color: 'var(--accent-primary)', background: 'none', border: 'none', cursor: 'pointer' }}
                       >
@@ -631,11 +635,11 @@ const LevelMaker = () => {
                       </button>
                     )}
                   </div>
-                  
-                  <div className="excel-filter-box glass" style={{ 
-                    maxHeight: '120px', 
-                    overflowY: 'auto', 
-                    padding: '8px', 
+
+                  <div className="excel-filter-box glass" style={{
+                    maxHeight: '120px',
+                    overflowY: 'auto',
+                    padding: '8px',
                     borderRadius: '8px',
                     background: 'rgba(0,0,0,0.3)',
                     border: '1px solid rgba(255,255,255,0.05)',
@@ -645,45 +649,47 @@ const LevelMaker = () => {
                   }}>
                     {allRoles.length === 0 && <p style={{ fontSize: '0.8rem', color: '#666', gridColumn: '1/-1', textAlign: 'center' }}>等待导入 Army 表...</p>}
                     {allRoles.map(role => (
-                      <label key={role} style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '6px', 
-                        fontSize: '0.75rem', 
+                      <label key={role} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '0.75rem',
                         color: unitFilter.roles.includes(role) ? 'var(--accent-primary)' : 'var(--text-secondary)',
                         cursor: 'pointer',
                         padding: '2px 4px',
                         borderRadius: '4px',
                         background: unitFilter.roles.includes(role) ? 'rgba(124, 77, 255, 0.1)' : 'transparent'
                       }}>
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={unitFilter.roles.includes(role)}
                           onChange={() => {
-                            const newRoles = unitFilter.roles.includes(role) 
+                            const newRoles = unitFilter.roles.includes(role)
                               ? unitFilter.roles.filter(r => r !== role)
                               : [...unitFilter.roles, role];
                             setUnitFilter({ ...unitFilter, roles: newRoles });
                           }}
                           style={{ accentColor: 'var(--accent-primary)' }}
                         />
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{role}</span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {ROLE_LABELS[role] ? `${role} (${ROLE_LABELS[role]})` : role}
+                        </span>
                       </label>
                     ))}
                   </div>
                 </div>
               </div>
 
-              <div className="units-table glass" style={{ 
-                marginTop: '1rem', 
-                borderRadius: '12px', 
+              <div className="units-table glass" style={{
+                marginTop: '1rem',
+                borderRadius: '12px',
                 overflow: 'hidden',
                 border: '1px solid rgba(255,255,255,0.1)',
                 background: 'rgba(0,0,0,0.2)'
               }}>
-                <div className="table-header" style={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: '100px 200px 70px 70px 70px 70px 100px 1fr 70px 100px',
+                <div className="table-header" style={{
+                  display: 'grid',
+                  gridTemplateColumns: '100px 150px 80px 70px 70px 60px 60px 60px 60px 80px 1fr 70px 80px',
                   padding: '14px 20px',
                   background: 'rgba(255,255,255,0.05)',
                   fontWeight: '600',
@@ -693,15 +699,18 @@ const LevelMaker = () => {
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px'
                 }}>
-                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('id')}>ID 标识 {unitFilter.sortBy === 'id' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
-                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('name')}>兵种名称 {unitFilter.sortBy === 'name' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
-                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('hp')}>HP {unitFilter.sortBy === 'hp' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
-                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('atk')}>ATK {unitFilter.sortBy === 'atk' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
-                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('spd')}>SPD {unitFilter.sortBy === 'spd' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
-                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('skillPower')}>SKL {unitFilter.sortBy === 'skillPower' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
-                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('score')}>战力评分 {unitFilter.sortBy === 'score' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span>ID</span>
+                  <span>兵种名称</span>
+                  <span>ArmyTag</span>
+                  <span>HP</span>
+                  <span>ATK</span>
+                  <span>ASP</span>
+                  <span>ARNG</span>
+                  <span>DRNG</span>
+                  <span>SPD</span>
+                  <span>战力评分</span>
                   <span>职能标签</span>
-                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('weight')}>权重 {unitFilter.sortBy === 'weight' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span>权重</span>
                   <span style={{ textAlign: 'right' }}>管理</span>
                 </div>
                 <div className="table-body" style={{ maxHeight: 'calc(100vh - 450px)', overflowY: 'auto' }}>
@@ -711,9 +720,9 @@ const LevelMaker = () => {
                     </div>
                   )}
                   {filteredUnits.map(unit => (
-                    <div key={unit.id} className="table-row" style={{ 
-                      display: 'grid', 
-                      gridTemplateColumns: '100px 200px 70px 70px 70px 70px 100px 1fr 70px 100px',
+                    <div key={unit.id} className="table-row" style={{
+                      display: 'grid',
+                      gridTemplateColumns: '100px 150px 80px 70px 70px 60px 60px 60px 60px 80px 1fr 70px 80px',
                       padding: '12px 20px',
                       alignItems: 'center',
                       fontSize: '0.85rem',
@@ -724,20 +733,29 @@ const LevelMaker = () => {
                         {unit.id}
                       </span>
                       <span style={{ fontWeight: '600', color: '#fff' }}>{unit.name}</span>
-                      <span style={{ color: '#FF5252', fontWeight: '500' }}>{unit.hp}</span>
-                      <span style={{ color: '#FFAB40', fontWeight: '500' }}>{unit.atk}</span>
-                      <span style={{ color: '#00E5FF', fontWeight: '500' }}>{unit.spd}</span>
-                      <span style={{ color: '#E040FB', fontWeight: '500' }}>{unit.skillPower}</span>
-                      <span style={{ fontWeight: '800', color: 'var(--accent-primary)', fontSize: '0.9rem' }}>{calculatePowerScore(unit)}</span>
+                      <span className="badge" style={{
+                        background: unit.armyTag === 9 ? 'rgba(255, 171, 64, 0.2)' : 'rgba(124, 77, 255, 0.2)',
+                        color: unit.armyTag === 9 ? '#FFAB40' : '#B39DDB',
+                        fontSize: '0.7rem'
+                      }}>
+                        {unit.armyTag === 9 ? 'Boss' : `Tier ${unit.armyTag || 1}`}
+                      </span>
+                      <span style={{ color: '#FF5252' }}>{unit.hp}</span>
+                      <span style={{ color: '#FFAB40' }}>{unit.atk}</span>
+                      <span style={{ color: '#F48FB1' }}>{unit.atkSpeed || 1.0}</span>
+                      <span style={{ color: '#81C784' }}>{unit.atkRange || 100}</span>
+                      <span style={{ color: '#64B5F6' }}>{unit.detRange || 200}</span>
+                      <span style={{ color: '#00E5FF' }}>{unit.spd}</span>
+                      <span style={{ fontWeight: '800', color: 'var(--accent-primary)' }}>{calculatePowerScore(unit)}</span>
                       <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                         {unit.roles.map(role => (
-                          <span key={role} className="tag" style={{ 
-                            fontSize: '0.6rem', 
-                            padding: '2px 8px', 
+                          <span key={role} className="tag" style={{
+                            fontSize: '0.6rem',
+                            padding: '2px 8px',
                             borderRadius: '4px',
-                            background: role.startsWith('T') ? 'rgba(0, 229, 255, 0.1)' : 'rgba(255,255,255,0.05)',
-                            color: role.startsWith('T') ? '#00E5FF' : 'inherit'
-                          }}>{role}</span>
+                            background: (typeof role === 'string' && role.startsWith('T')) ? 'rgba(0, 229, 255, 0.1)' : 'rgba(255,255,255,0.05)',
+                            color: (typeof role === 'string' && role.startsWith('T')) ? '#00E5FF' : 'inherit'
+                          }}>{typeof role === 'number' ? `${ROLE_SYMBOLS[role]} ${ROLE_LABELS[role]}` : role}</span>
                         ))}
                       </div>
                       <span style={{ color: 'var(--text-muted)' }}>{unit.spawnWeight}</span>
@@ -801,7 +819,7 @@ const LevelMaker = () => {
 
           {/* 2. 难度预算配置 */}
           {activeTab === 'budget' && (
-            <motion.div 
+            <motion.div
               key="budget"
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
@@ -816,7 +834,7 @@ const LevelMaker = () => {
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                       <XAxis dataKey="level" label={{ value: '层数 (Level)', position: 'insideBottom', offset: -5 }} stroke="var(--text-muted)" />
                       <YAxis stroke="var(--text-muted)" />
-                      <Tooltip 
+                      <Tooltip
                         contentStyle={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
                         itemStyle={{ color: 'var(--accent-primary)' }}
                       />
@@ -831,30 +849,30 @@ const LevelMaker = () => {
                 <div className="params-grid">
                   <div className="param-item">
                     <label>基础积分 (BaseScore)</label>
-                    <input 
-                      type="number" 
-                      value={levelConfig.baseScore} 
-                      onChange={(e) => dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { baseScore: Number(e.target.value) }})}
+                    <input
+                      type="number"
+                      value={levelConfig.baseScore}
+                      onChange={(e) => dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { baseScore: Number(e.target.value) } })}
                     />
                     <p>第1层关卡的起始总战力值</p>
                   </div>
                   <div className="param-item">
                     <label>难度因子 (DifficultyFactor)</label>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       step="0.01"
-                      value={levelConfig.difficultyFactor} 
-                      onChange={(e) => dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { difficultyFactor: Number(e.target.value) }})}
+                      value={levelConfig.difficultyFactor}
+                      onChange={(e) => dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { difficultyFactor: Number(e.target.value) } })}
                     />
                     <p>数值越高，后期关卡难度飙升越快</p>
                   </div>
                   <div className="param-item">
                     <label>预测关卡总数 (Preview Levels)</label>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       min="1"
                       max="1000"
-                      value={previewRange} 
+                      value={previewRange}
                       onChange={(e) => setPreviewRange(Number(e.target.value))}
                     />
                     <p>设置图表中预览展示的关卡数量</p>
@@ -869,95 +887,95 @@ const LevelMaker = () => {
                     </h4>
                     <div style={{ display: 'flex', gap: '0.75rem' }}>
                       <button className="btn-outline" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => {
-                        const interval = 10; 
+                        const interval = 10;
                         const newSpikes = [];
                         for (let i = interval; i <= previewRange; i += interval) {
                           const chapter = Math.floor(i / interval);
                           const isMajorChapter = chapter % 5 === 0;
-                          
+
                           // 1. 添加峰值 (Boss 爆发) - 偏向攻击性增长
-                          newSpikes.push({ 
-                            level: i, 
+                          newSpikes.push({
+                            level: i,
                             hpMultiplier: isMajorChapter ? 1.4 : 1.2,
                             atkMultiplier: isMajorChapter ? 1.6 : 1.3,
                             type: 'peak',
-                            note: isMajorChapter ? `第 ${chapter/5} 章节终极 Boss` : `第 ${chapter} 阶段精英战` 
+                            note: isMajorChapter ? `第 ${chapter / 5} 章节终极 Boss` : `第 ${chapter} 阶段精英战`
                           });
-                          
+
                           // 2. 添加台阶 (难度整体上行) - 稳健的双向增长
-                          newSpikes.push({ 
-                            level: i, 
+                          newSpikes.push({
+                            level: i,
                             hpMultiplier: 1.1,
                             atkMultiplier: 1.1,
                             type: 'step',
-                            note: `第 ${chapter} 章节难度台阶` 
+                            note: `第 ${chapter} 章节难度台阶`
                           });
                         }
-                        dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: newSpikes }});
+                        dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: newSpikes } });
                       }}>
                         <Zap size={14} /> 自动生成章节模型
                       </button>
                       <button className="btn-outline" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => {
                         const newSpike = { level: previewRange / 2, hpMultiplier: 1.2, atkMultiplier: 1.2, type: 'peak', note: '新越迁点' };
-                        dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: [...(levelConfig.spikes || []), newSpike] }});
+                        dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: [...(levelConfig.spikes || []), newSpike] } });
                       }}>
                         <Plus size={14} /> 添加手动点
                       </button>
                     </div>
                   </div>
-                  
+
                   <div className="spikes-list">
                     {(levelConfig.spikes || []).map((spike, idx) => (
                       <div key={idx} className="spike-row glass" style={{ display: 'flex', gap: '1rem', padding: '1rem', borderRadius: '8px', marginBottom: '0.5rem', alignItems: 'center' }}>
                         <div style={{ flex: 1 }}>
                           <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>关卡层级</label>
-                          <input 
-                            type="number" 
-                            value={spike.level} 
+                          <input
+                            type="number"
+                            value={spike.level}
                             onChange={(e) => {
                               const newSpikes = [...levelConfig.spikes];
                               newSpikes[idx].level = Number(e.target.value);
-                              dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: newSpikes }});
+                              dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: newSpikes } });
                             }}
                             style={{ width: '100%', padding: '4px', marginTop: '4px' }}
                           />
                         </div>
                         <div style={{ flex: 1 }}>
                           <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>血量倍率 (HP)</label>
-                          <input 
-                            type="number" 
+                          <input
+                            type="number"
                             step="0.1"
-                            value={spike.hpMultiplier || 1} 
+                            value={spike.hpMultiplier || 1}
                             onChange={(e) => {
                               const newSpikes = [...levelConfig.spikes];
                               newSpikes[idx].hpMultiplier = Number(e.target.value);
-                              dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: newSpikes }});
+                              dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: newSpikes } });
                             }}
                             style={{ width: '100%', padding: '4px', marginTop: '4px' }}
                           />
                         </div>
                         <div style={{ flex: 1 }}>
                           <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>攻击倍率 (ATK)</label>
-                          <input 
-                            type="number" 
+                          <input
+                            type="number"
                             step="0.1"
-                            value={spike.atkMultiplier || 1} 
+                            value={spike.atkMultiplier || 1}
                             onChange={(e) => {
                               const newSpikes = [...levelConfig.spikes];
                               newSpikes[idx].atkMultiplier = Number(e.target.value);
-                              dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: newSpikes }});
+                              dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: newSpikes } });
                             }}
                             style={{ width: '100%', padding: '4px', marginTop: '4px' }}
                           />
                         </div>
                         <div style={{ flex: 1 }}>
                           <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>类型</label>
-                          <select 
-                            value={spike.type || 'peak'} 
+                          <select
+                            value={spike.type || 'peak'}
                             onChange={(e) => {
                               const newSpikes = [...levelConfig.spikes];
                               newSpikes[idx].type = e.target.value;
-                              dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: newSpikes }});
+                              dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: newSpikes } });
                             }}
                             style={{ width: '100%', padding: '4px', marginTop: '4px', background: 'rgba(0,0,0,0.3)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px' }}
                           >
@@ -967,20 +985,20 @@ const LevelMaker = () => {
                         </div>
                         <div style={{ flex: 2 }}>
                           <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>备注</label>
-                          <input 
-                            type="text" 
-                            value={spike.note} 
+                          <input
+                            type="text"
+                            value={spike.note}
                             onChange={(e) => {
                               const newSpikes = [...levelConfig.spikes];
                               newSpikes[idx].note = e.target.value;
-                              dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: newSpikes }});
+                              dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: newSpikes } });
                             }}
                             style={{ width: '100%', padding: '4px', marginTop: '4px' }}
                           />
                         </div>
                         <button className="delete" style={{ padding: '8px', background: 'none', border: 'none', color: '#FF5252', cursor: 'pointer' }} onClick={() => {
                           const newSpikes = levelConfig.spikes.filter((_, i) => i !== idx);
-                          dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: newSpikes }});
+                          dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { spikes: newSpikes } });
                         }}>
                           <Trash2 size={16} />
                         </button>
@@ -1001,7 +1019,7 @@ const LevelMaker = () => {
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                       <XAxis dataKey="level" label={{ value: '层数 (Level)', position: 'insideBottom', offset: -5 }} stroke="var(--text-muted)" />
                       <YAxis stroke="var(--text-muted)" />
-                      <Tooltip 
+                      <Tooltip
                         contentStyle={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
                         itemStyle={{ color: 'var(--accent-primary)' }}
                       />
@@ -1015,7 +1033,7 @@ const LevelMaker = () => {
 
           {/* 2.5 兵种属性与阵容规划 */}
           {activeTab === 'planning' && (
-            <motion.div 
+            <motion.div
               key="planning"
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
@@ -1023,24 +1041,27 @@ const LevelMaker = () => {
               className="planning-dashboard"
             >
               <div className="planning-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-                
+
                 {/* 左侧：兵种派生与权重 */}
                 <div className="planning-left" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                  
+
                   {/* 职能权重配置 */}
                   <div className="planning-card glass">
                     <h3><Crosshair size={18} color="var(--accent-primary)" /> 职能属性权重 (Role Weights)</h3>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>基于标准单位(100%)，计算不同职能的属性偏移。</p>
                     <div className="weights-table">
-                      <div className="weight-header" style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr 1fr', fontWeight: 'bold', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
-                        <span>职能</span><span>HP权重</span><span>ATK权重</span><span>机制加成</span>
+                      <div className="weight-header" style={{ display: 'grid', gridTemplateColumns: '60px 1fr 1fr 1fr 1.2fr 1fr 1fr', fontWeight: 'bold', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem', marginBottom: '0.5rem', fontSize: '0.7rem' }}>
+                        <span>职能</span><span>HP</span><span>ATK</span><span>CC</span><span>ASP</span><span>ARNG</span><span>DRNG</span>
                       </div>
                       {Object.keys(roleWeights).map(role => (
-                        <div key={role} className="weight-row" style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr 1fr', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-                          <span style={{ fontWeight: 'bold', color: 'var(--text-secondary)' }}>{role}</span>
-                          <input type="number" step="0.1" value={roleWeights[role].hp} onChange={(e) => setRoleWeights({...roleWeights, [role]: {...roleWeights[role], hp: Number(e.target.value)}})} style={{width: '100%'}}/>
-                          <input type="number" step="0.1" value={roleWeights[role].atk} onChange={(e) => setRoleWeights({...roleWeights, [role]: {...roleWeights[role], atk: Number(e.target.value)}})} style={{width: '100%'}}/>
-                          <input type="number" step="0.1" value={roleWeights[role].cc} onChange={(e) => setRoleWeights({...roleWeights, [role]: {...roleWeights[role], cc: Number(e.target.value)}})} style={{width: '100%'}}/>
+                        <div key={role} className="weight-row" style={{ display: 'grid', gridTemplateColumns: '60px 1fr 1fr 1fr 1.2fr 1fr 1fr', gap: '0.4rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+                          <span style={{ fontWeight: 'bold', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>{ROLE_LABELS[role]}</span>
+                          <input type="number" step="0.1" value={roleWeights[role].hp} onChange={(e) => setRoleWeights({ ...roleWeights, [role]: { ...roleWeights[role], hp: Number(e.target.value) } })} style={{ width: '100%', fontSize: '0.75rem' }} />
+                          <input type="number" step="0.1" value={roleWeights[role].atk} onChange={(e) => setRoleWeights({ ...roleWeights, [role]: { ...roleWeights[role], atk: Number(e.target.value) } })} style={{ width: '100%', fontSize: '0.75rem' }} />
+                          <input type="number" step="0.1" value={roleWeights[role].cc} onChange={(e) => setRoleWeights({ ...roleWeights, [role]: { ...roleWeights[role], cc: Number(e.target.value) } })} style={{ width: '100%', fontSize: '0.75rem' }} />
+                          <input type="number" step="0.1" value={roleWeights[role].atkSpeed} onChange={(e) => setRoleWeights({ ...roleWeights, [role]: { ...roleWeights[role], atkSpeed: Number(e.target.value) } })} style={{ width: '100%', fontSize: '0.75rem' }} />
+                          <input type="number" step="10" value={roleWeights[role].atkRange} onChange={(e) => setRoleWeights({ ...roleWeights, [role]: { ...roleWeights[role], atkRange: Number(e.target.value) } })} style={{ width: '100%', fontSize: '0.75rem' }} />
+                          <input type="number" step="10" value={roleWeights[role].detRange} onChange={(e) => setRoleWeights({ ...roleWeights, [role]: { ...roleWeights[role], detRange: Number(e.target.value) } })} style={{ width: '100%', fontSize: '0.75rem' }} />
                         </div>
                       ))}
                     </div>
@@ -1053,28 +1074,28 @@ const LevelMaker = () => {
                       <div className="input-row">
                         <div className="input-group">
                           <label>基准 HP</label>
-                          <input type="number" value={derivationParams.baseHp} onChange={e => setDerivationParams({...derivationParams, baseHp: Number(e.target.value)})} />
+                          <input type="number" value={derivationParams.baseHp} onChange={e => setDerivationParams({ ...derivationParams, baseHp: Number(e.target.value) })} />
                         </div>
                         <div className="input-group">
                           <label>基准 ATK</label>
-                          <input type="number" value={derivationParams.baseAtk} onChange={e => setDerivationParams({...derivationParams, baseAtk: Number(e.target.value)})} />
+                          <input type="number" value={derivationParams.baseAtk} onChange={e => setDerivationParams({ ...derivationParams, baseAtk: Number(e.target.value) })} />
                         </div>
                       </div>
                       <div className="input-row">
                         <div className="input-group">
                           <label>基准 SPD</label>
-                          <input type="number" value={derivationParams.baseSpd} onChange={e => setDerivationParams({...derivationParams, baseSpd: Number(e.target.value)})} />
+                          <input type="number" value={derivationParams.baseSpd} onChange={e => setDerivationParams({ ...derivationParams, baseSpd: Number(e.target.value) })} />
                         </div>
                         <div className="input-group">
                           <label>目标职能</label>
-                          <select value={derivationParams.targetRole} onChange={e => setDerivationParams({...derivationParams, targetRole: e.target.value})} style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '8px' }}>
+                          <select value={derivationParams.targetRole} onChange={e => setDerivationParams({ ...derivationParams, targetRole: e.target.value })} style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '8px' }}>
                             {Object.keys(roleWeights).map(r => <option key={r} value={r}>{r}</option>)}
                           </select>
                         </div>
                       </div>
                       <div className="input-group">
                         <label>生成兵种名称</label>
-                        <input type="text" value={derivationParams.unitName} onChange={e => setDerivationParams({...derivationParams, unitName: e.target.value})} />
+                        <input type="text" value={derivationParams.unitName} onChange={e => setDerivationParams({ ...derivationParams, unitName: e.target.value })} />
                       </div>
                       <button className="btn-primary" onClick={() => {
                         const weights = roleWeights[derivationParams.targetRole];
@@ -1083,9 +1104,13 @@ const LevelMaker = () => {
                           name: derivationParams.unitName,
                           hp: Math.round(derivationParams.baseHp * weights.hp),
                           atk: Math.round(derivationParams.baseAtk * weights.atk),
+                          atkSpeed: weights.atkSpeed || 1.0,
+                          atkRange: weights.atkRange || 100,
+                          detRange: weights.detRange || 200,
                           spd: derivationParams.baseSpd,
                           skillPower: Math.round(weights.cc * 100),
-                          roles: [derivationParams.targetRole],
+                          roles: [Number(derivationParams.targetRole)],
+                          armyTag: 1,
                           spawnWeight: 50
                         };
                         dispatch({ type: 'ADD_UNIT', payload: newUnit });
@@ -1099,7 +1124,7 @@ const LevelMaker = () => {
 
                 {/* 右侧：矩阵生成器与模版 */}
                 <div className="planning-right" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                  
+
                   {/* 矩阵生成器 (Matrix Generator) */}
                   <div className="planning-card glass" style={{ border: '1px solid var(--accent-primary)', boxShadow: '0 0 20px rgba(124, 77, 255, 0.1)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -1107,16 +1132,16 @@ const LevelMaker = () => {
                       <span className="badge" style={{ background: 'var(--accent-primary)', fontSize: '0.7rem' }}>BETA</span>
                     </div>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>根据高维度规划自动批量裂变兵种库。</p>
-                    
+
                     <div className="config-matrix" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                       <div className="input-row">
                         <div className="input-group">
                           <label>预期总关卡数</label>
-                          <input type="number" value={matrixConfig.totalLevels} onChange={e => setMatrixConfig({...matrixConfig, totalLevels: Number(e.target.value)})} />
+                          <input type="number" value={matrixConfig.totalLevels} onChange={e => setMatrixConfig({ ...matrixConfig, totalLevels: Number(e.target.value) })} />
                         </div>
                         <div className="input-group">
                           <label>兵种迭代密度 (每N关)</label>
-                          <input type="number" value={matrixConfig.updateFrequency} onChange={e => setMatrixConfig({...matrixConfig, updateFrequency: Number(e.target.value)})} />
+                          <input type="number" value={matrixConfig.updateFrequency} onChange={e => setMatrixConfig({ ...matrixConfig, updateFrequency: Number(e.target.value) })} />
                         </div>
                       </div>
 
@@ -1125,7 +1150,7 @@ const LevelMaker = () => {
                           <label>随机波动方差 (Randomness)</label>
                           <span style={{ fontSize: '0.8rem', color: 'var(--accent-primary)' }}>{Math.round(matrixConfig.randomness * 100)}%</span>
                         </div>
-                        <input type="range" min="0" max="0.5" step="0.05" value={matrixConfig.randomness} onChange={e => setMatrixConfig({...matrixConfig, randomness: Number(e.target.value)})} style={{ width: '100%' }} />
+                        <input type="range" min="0" max="0.5" step="0.05" value={matrixConfig.randomness} onChange={e => setMatrixConfig({ ...matrixConfig, randomness: Number(e.target.value) })} style={{ width: '100%' }} />
                       </div>
 
                       <div className="role-proportions glass" style={{ padding: '1rem', borderRadius: '12px', background: 'rgba(0,0,0,0.2)' }}>
@@ -1133,51 +1158,50 @@ const LevelMaker = () => {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                           {Object.keys(matrixConfig.roleDistribution).map(role => (
                             <div key={role} className="input-group">
-                              <label style={{ fontSize: '0.7rem' }}>{role} %</label>
+                              <label style={{ fontSize: '0.7rem' }}>{ROLE_LABELS[role] || role} %</label>
                               <input type="number" step="0.05" value={matrixConfig.roleDistribution[role]} onChange={e => {
-                                const newDist = {...matrixConfig.roleDistribution, [role]: Number(e.target.value)};
-                                setMatrixConfig({...matrixConfig, roleDistribution: newDist});
+                                const newDist = { ...matrixConfig.roleDistribution, [role]: Number(e.target.value) };
+                                setMatrixConfig({ ...matrixConfig, roleDistribution: newDist });
                               }} />
                             </div>
                           ))}
                         </div>
-                        <div style={{ marginTop: '0.75rem', fontSize: '0.7rem', color: Object.values(matrixConfig.roleDistribution).reduce((a,b)=>a+b,0).toFixed(2) === '1.00' ? '#00E676' : '#FF5252' }}>
-                          分布系数总和: {Object.values(matrixConfig.roleDistribution).reduce((a,b)=>a+b,0).toFixed(2)} (应为 1.0)
+                        <div style={{ marginTop: '0.75rem', fontSize: '0.7rem', color: Object.values(matrixConfig.roleDistribution).reduce((a, b) => a + b, 0).toFixed(2) === '1.00' ? '#00E676' : '#FF5252' }}>
+                          分布系数总和: {Object.values(matrixConfig.roleDistribution).reduce((a, b) => a + b, 0).toFixed(2)} (应为 1.0)
                         </div>
                       </div>
 
                       <div className="input-group">
                         <label>Boss 产出频率 (每 N 个普通怪)</label>
-                        <input type="number" value={matrixConfig.bossFrequency} onChange={e => setMatrixConfig({...matrixConfig, bossFrequency: Number(e.target.value)})} />
+                        <input type="number" value={matrixConfig.bossFrequency} onChange={e => setMatrixConfig({ ...matrixConfig, bossFrequency: Number(e.target.value) })} />
                       </div>
 
                       <button className="btn-primary" style={{ height: '50px', fontSize: '1rem' }} onClick={() => {
                         const totalTypes = Math.ceil(matrixConfig.totalLevels / matrixConfig.updateFrequency);
                         const newUnits = [];
-                        
-                        Object.keys(matrixConfig.roleDistribution).forEach(role => {
-                          const count = Math.round(totalTypes * matrixConfig.roleDistribution[role]);
+
+                        Object.keys(matrixConfig.roleDistribution).forEach(roleId => {
+                          const role = Number(roleId);
+                          const count = Math.round(totalTypes * matrixConfig.roleDistribution[roleId]);
                           const weights = roleWeights[role];
-                          
+
                           for (let i = 0; i < count; i++) {
                             // 阶层计算 (Tier 1 to 4)
                             const tier = Math.min(4, Math.ceil((i + 1) / (count / 4)));
-                            const tierMultiplier = 1 + (tier - 1) * 0.5; // T2=1.5, T3=2.0, T4=2.5
-                            
-                            // 是否为 Boss (根据频率)
-                            const isBoss = (i + 1) % matrixConfig.bossFrequency === 0;
-                            const bossMultiplier = isBoss ? 4.0 : 1.0; // Boss 血量 4 倍
-                            const bossAtkMultiplier = isBoss ? 1.5 : 1.0; // Boss 攻击 1.5 倍
+                            const tierMultiplier = 1 + (tier - 1) * 0.5;
 
-                            // 变异系数
+                            const isBoss = (i + 1) % matrixConfig.bossFrequency === 0;
+                            const bossMultiplier = isBoss ? 4.0 : 1.0;
+                            const bossAtkMultiplier = isBoss ? 1.5 : 1.0;
+
                             const hpMut = 1 + (Math.random() * 2 - 1) * matrixConfig.randomness;
                             const atkMut = 1 + (Math.random() * 2 - 1) * matrixConfig.randomness;
-                            
+
                             const pool = ROLE_NAME_POOLS[role] || ['未知单位'];
                             const baseName = pool[Math.floor(Math.random() * pool.length)];
                             const bossPrefix = isBoss ? BOSS_PREFIXES[Math.floor(Math.random() * BOSS_PREFIXES.length)] : '';
                             const symbol = ROLE_SYMBOLS[role] || '';
-                            
+
                             const finalId = getNextIdForRole(isBoss ? 'Boss' : role, newUnits);
 
                             newUnits.push({
@@ -1185,14 +1209,18 @@ const LevelMaker = () => {
                               name: `${bossPrefix}${baseName}${symbol} T${tier}`,
                               hp: Math.round(derivationParams.baseHp * weights.hp * tierMultiplier * hpMut * bossMultiplier),
                               atk: Math.round(derivationParams.baseAtk * weights.atk * tierMultiplier * atkMut * bossAtkMultiplier),
+                              atkSpeed: Number((weights.atkSpeed * (0.9 + Math.random() * 0.2)).toFixed(2)),
+                              atkRange: Math.round(weights.atkRange * (0.9 + Math.random() * 0.2)),
+                              detRange: Math.round(weights.detRange * (0.9 + Math.random() * 0.2)),
                               spd: derivationParams.baseSpd + Math.floor(Math.random() * 5),
                               skillPower: Math.round(weights.cc * 100 + (tier - 1) * 20 + (isBoss ? 50 : 0)),
-                              roles: [role, `T${tier}`, isBoss ? 'Boss' : 'Elite'].filter(Boolean),
-                              spawnWeight: isBoss ? 10 : 50 // Boss 出现权重低
+                              roles: [role], // 仅存储职能整数
+                              armyTag: isBoss ? 9 : tier, // 9 为 Boss, 1-4 为 Tier
+                              spawnWeight: isBoss ? 10 : 50
                             });
                           }
                         });
-                        
+
                         if (confirm(`系统即将生成 ${newUnits.length} 个兵种并加入库中，是否继续？`)) {
                           dispatch({ type: 'IMPORT_UNITS', payload: newUnits });
                           alert('矩阵生成完毕！您可以切换回“兵种建模库”查看结果。');
@@ -1203,7 +1231,7 @@ const LevelMaker = () => {
                     </div>
                   </div>
 
-                  
+
                   {/* 阵容模版管理 */}
                   <div className="planning-card glass">
                     <h3><Users size={18} color="var(--accent-secondary)" /> 阵容模版 (Roster Templates)</h3>
@@ -1224,21 +1252,21 @@ const LevelMaker = () => {
                         <div className="input-group">
                           <label>模版名称</label>
                           <input type="text" value={t.name} onChange={(e) => {
-                            setRosterTemplates(rosterTemplates.map(rt => rt.id === t.id ? {...rt, name: e.target.value} : rt));
+                            setRosterTemplates(rosterTemplates.map(rt => rt.id === t.id ? { ...rt, name: e.target.value } : rt));
                           }} />
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                          {['Tank', 'Warrior', 'DPS', 'CC'].map(role => (
+                          {[0, 1, 2, 3].map(role => (
                             <div key={role} className="input-group">
-                              <label>{role} 比例</label>
+                              <label>{ROLE_LABELS[role]} 比例</label>
                               <input type="number" step="0.05" value={t[role]} onChange={(e) => {
-                                setRosterTemplates(rosterTemplates.map(rt => rt.id === t.id ? {...rt, [role]: Number(e.target.value)} : rt));
+                                setRosterTemplates(rosterTemplates.map(rt => rt.id === t.id ? { ...rt, [role]: Number(e.target.value) } : rt));
                               }} />
                             </div>
                           ))}
                         </div>
-                        <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: (t.Tank + t.Warrior + t.DPS + t.CC).toFixed(2) === '1.00' ? '#00E676' : '#FF5252' }}>
-                          当前比例总和: {(t.Tank + t.Warrior + t.DPS + t.CC).toFixed(2)}
+                        <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: (t[0] + t[1] + t[2] + t[3]).toFixed(2) === '1.00' ? '#00E676' : '#FF5252' }}>
+                          当前比例总和: {(t[0] + t[1] + t[2] + t[3]).toFixed(2)}
                         </div>
                       </div>
                     ))}
@@ -1251,21 +1279,21 @@ const LevelMaker = () => {
                     <div className="input-row">
                       <div className="input-group">
                         <label>期望玩家 DPS</label>
-                        <input type="number" value={validationConfig.expectedDPS} onChange={e => setValidationConfig({...validationConfig, expectedDPS: Number(e.target.value)})} />
+                        <input type="number" value={validationConfig.expectedDPS} onChange={e => setValidationConfig({ ...validationConfig, expectedDPS: Number(e.target.value) })} />
                       </div>
                       <div className="input-group">
                         <label>期望通关时长(s)</label>
-                        <input type="number" value={validationConfig.targetDuration} onChange={e => setValidationConfig({...validationConfig, targetDuration: Number(e.target.value)})} />
+                        <input type="number" value={validationConfig.targetDuration} onChange={e => setValidationConfig({ ...validationConfig, targetDuration: Number(e.target.value) })} />
                       </div>
                     </div>
                     <div className="input-row">
                       <div className="input-group">
                         <label>最大同屏数量</label>
-                        <input type="number" value={validationConfig.maxDensity} onChange={e => setValidationConfig({...validationConfig, maxDensity: Number(e.target.value)})} />
+                        <input type="number" value={validationConfig.maxDensity} onChange={e => setValidationConfig({ ...validationConfig, maxDensity: Number(e.target.value) })} />
                       </div>
                       <div className="input-group">
                         <label>最小同屏数量</label>
-                        <input type="number" value={validationConfig.minDensity} onChange={e => setValidationConfig({...validationConfig, minDensity: Number(e.target.value)})} />
+                        <input type="number" value={validationConfig.minDensity} onChange={e => setValidationConfig({ ...validationConfig, minDensity: Number(e.target.value) })} />
                       </div>
                     </div>
                   </div>
@@ -1277,7 +1305,7 @@ const LevelMaker = () => {
 
           {/* 3. 全关卡部署规划 */}
           {activeTab === 'plan' && (
-            <motion.div 
+            <motion.div
               key="plan"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1341,8 +1369,8 @@ const LevelMaker = () => {
                     <div className="row-roles">
                       <label>职能配比</label>
                       <div className="role-dots">
-                        {p.selected.some(s => s.roles.some(r => r.includes('1') || r.includes('坦克'))) && <div className="dot tank" title="有坦克" />}
-                        {p.selected.some(s => s.roles.some(r => r.includes('2') || r.includes('输出'))) && <div className="dot dps" title="有输出" />}
+                        {p.selected.some(s => s.roles.some(r => r === 0 || r === '0')) && <div className="dot tank" title="有坦克" />}
+                        {p.selected.some(s => s.roles.some(r => r === 2 || r === '2')) && <div className="dot dps" title="有输出" />}
                       </div>
                     </div>
                   </div>
@@ -1353,7 +1381,7 @@ const LevelMaker = () => {
 
           {/* 4. 单关模拟分析 */}
           {activeTab === 'analysis' && (
-            <motion.div 
+            <motion.div
               key="analysis"
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
@@ -1363,10 +1391,10 @@ const LevelMaker = () => {
               <div className="analysis-header">
                 <div className="level-selector">
                   <span>预览层数:</span>
-                  <input 
-                    type="range" min="1" max="50" 
-                    value={previewLevel} 
-                    onChange={(e) => setPreviewLevel(Number(e.target.value))} 
+                  <input
+                    type="range" min="1" max="50"
+                    value={previewLevel}
+                    onChange={(e) => setPreviewLevel(Number(e.target.value))}
                   />
                   <b>Floor {previewLevel}</b>
                 </div>
