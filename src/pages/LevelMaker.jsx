@@ -18,7 +18,8 @@ import {
   Activity,
   Download,
   Crosshair,
-  Sliders
+  Sliders,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -522,6 +523,13 @@ const LevelMaker = () => {
                   </button>
                   <button className="btn-outline" onClick={() => exportToExcel(state.units, 'units_export.xlsx')}>
                     <Download size={16} /> 导出至 Excel
+                  </button>
+                  <button className="btn-outline" style={{ color: '#FF5252', borderColor: 'rgba(255,82,82,0.3)' }} onClick={() => {
+                    if (confirm('确认重置兵种库到初始状态？这将清除所有手动生成的兵种和导入的数据，恢复标准数字 ID。')) {
+                      dispatch({ type: 'RESET_UNITS' });
+                    }
+                  }}>
+                    <RotateCcw size={16} /> 重置库
                   </button>
                   <button className="btn-primary" onClick={() => setEditingUnit({})}>
                     <Plus size={16} /> 新增兵种

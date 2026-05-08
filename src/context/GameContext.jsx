@@ -106,19 +106,17 @@ const initialState = {
   // 兵种库 (游戏制作辅助)
   units: [
     {
-      id: 'unit_warrior',
+      id: '10001',
       name: '近战士兵',
       hp: 100, atk: 15, spd: 10, skillPower: 0,
-      roles: ['前排坦克'],
-      counters: ['远程输出'],
+      roles: ['Tank'],
       spawnWeight: 50
     },
     {
-      id: 'unit_archer',
+      id: '30001',
       name: '精英弓箭手',
       hp: 60, atk: 25, spd: 15, skillPower: 10,
-      roles: ['远程输出'],
-      counters: ['召唤者'],
+      roles: ['DPS'],
       spawnWeight: 20
     }
   ],
@@ -229,7 +227,12 @@ function gameReducer(state, action) {
     case 'IMPORT_UNITS':
       return {
         ...state,
-        units: [...state.units, ...action.payload]
+        units: action.replace ? action.payload : [...state.units, ...action.payload]
+      };
+    case 'RESET_UNITS':
+      return {
+        ...state,
+        units: initialState.units
       };
     // 关卡配置管理
     case 'UPDATE_LEVEL_CONFIG':
