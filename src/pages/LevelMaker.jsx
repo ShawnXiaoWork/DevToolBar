@@ -15,7 +15,10 @@ import {
   PieChart as PieChartIcon,
   Sword,
   Zap,
-  Activity
+  Activity,
+  Download,
+  Crosshair,
+  Sliders
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -38,7 +41,11 @@ import {
 const calculatePowerScore = (unit) => {
   const base = (unit.hp * 0.1) + unit.atk;
   const multipliers = (1 + (unit.spd || 0) / 100) * (1 + (unit.skillPower || 0) / 100);
-  return Math.round(base * multipliers);
+  let score = Math.round(base * multipliers);
+  if (unit.roles && unit.roles.some(r => r.includes('CC') || r.includes('控制'))) {
+    score = Math.round(score * 1.5); // CC 机制权重附加
+  }
+  return score;
 };
 
 /**
@@ -97,7 +104,73 @@ const LevelMaker = () => {
   const [editingUnit, setEditingUnit] = useState(null);
   const [previewLevel, setPreviewLevel] = useState(1);
   const [previewRange, setPreviewRange] = useState(20);
-  const [unitFilter, setUnitFilter] = useState({ name: '', roles: [], sortBy: 'score' });
+  const [unitFilter, setUnitFilter] = useState({ name: '', roles: [], sortBy: 'score', sortDir: 'desc' });
+
+  // --- 兵种规划状态 ---
+  const [roleWeights, setRoleWeights] = useState({
+    Tank: { hp: 1.6, atk: 0.4, cc: 0 },
+    Warrior: { hp: 1.0, atk: 1.0, cc: 0 },
+    DPS: { hp: 0.5, atk: 1.5, cc: 0 },
+    CC: { hp: 0.7, atk: 0.6, cc: 0.7 }
+  });
+  const [rosterTemplates, setRosterTemplates] = useState([
+    { id: 't1', name: '均衡阵型', Tank: 0.2, Warrior: 0.3, DPS: 0.4, CC: 0.1 },
+    { id: 't2', name: '高压阵型', Tank: 0.1, Warrior: 0.0, DPS: 0.8, CC: 0.1 },
+    { id: 't3', name: '绞肉机阵型', Tank: 0.0, Warrior: 0.7, DPS: 0.0, CC: 0.3 }
+  ]);
+  const [activeTemplateId, setActiveTemplateId] = useState('t1');
+  const [validationConfig, setValidationConfig] = useState({
+    expectedDPS: 100, // 玩家预期DPS
+    targetDuration: 60, // 期望通关时长(s)
+    maxDensity: 50, // 最大同屏数量
+    minDensity: 3 // 最小同屏数量
+  });
+  const [derivationParams, setDerivationParams] = useState({
+    baseHp: 100,
+    baseAtk: 10,
+    baseSpd: 0,
+    baseSkillPower: 0,
+    targetRole: 'Tank',
+    unitName: '衍生肉盾'
+  });
+  const [matrixConfig, setMatrixConfig] = useState({
+    totalLevels: 200,
+    updateFrequency: 5,
+    randomness: 0.2,
+    roleDistribution: {
+      Tank: 0.2,
+      Warrior: 0.25,
+      DPS: 0.4,
+      CC: 0.15
+    },
+    bossFrequency: 10 // 每 10 个普通单位生成一个 Boss
+  });
+
+  const ADJECTIVES = ['狂暴的', '迅捷的', '重甲的', '虚弱的', '致命的', '坚固的', '远古的', '受污染的', '机械的', '幽灵般的'];
+  const BOSS_PREFIXES = ['【领主】', '【噩梦】', '【终焉】', '【暴君】', '【古神】'];
+  const ROLE_NAMES = {
+    Tank: '守护者',
+    Warrior: '征服者',
+    DPS: '毁灭者',
+    CC: '干扰者'
+  };
+
+  const ROLE_ID_RANGES = {
+    Tank: 10000,
+    Warrior: 20000,
+    DPS: 30000,
+    CC: 40000,
+    Boss: 90000
+  };
+
+  const getNextIdForRole = (role) => {
+    const rangeStart = ROLE_ID_RANGES[role] || 50000;
+    const existingIds = state.units
+      .map(u => parseInt(u.id))
+      .filter(id => !isNaN(id) && id >= rangeStart && id < rangeStart + 10000);
+    const maxId = existingIds.length > 0 ? Math.max(...existingIds) : rangeStart;
+    return (maxId + 1).toString();
+  };
 
   // --- 兵种过滤逻辑 ---
   const filteredUnits = useMemo(() => {
@@ -110,12 +183,31 @@ const LevelMaker = () => {
         return matchName && matchRoles;
       })
       .sort((a, b) => {
-        if (unitFilter.sortBy === 'score') return calculatePowerScore(b) - calculatePowerScore(a);
-        if (unitFilter.sortBy === 'hp') return b.hp - a.hp;
-        if (unitFilter.sortBy === 'atk') return b.atk - a.atk;
-        return 0;
+        const dir = unitFilter.sortDir === 'asc' ? 1 : -1;
+        let valA, valB;
+        
+        switch(unitFilter.sortBy) {
+          case 'hp': valA = a.hp; valB = b.hp; break;
+          case 'atk': valA = a.atk; valB = b.atk; break;
+          case 'spd': valA = a.spd; valB = b.spd; break;
+          case 'skillPower': valA = a.skillPower; valB = b.skillPower; break;
+          case 'score': valA = calculatePowerScore(a); valB = calculatePowerScore(b); break;
+          case 'name': return a.name.localeCompare(b.name) * dir;
+          case 'weight': valA = a.spawnWeight; valB = b.spawnWeight; break;
+          default: valA = calculatePowerScore(a); valB = calculatePowerScore(b);
+        }
+        
+        return (valA - valB) * dir;
       });
   }, [state.units, unitFilter]);
+
+  const toggleSort = (field) => {
+    setUnitFilter(prev => ({
+      ...prev,
+      sortBy: field,
+      sortDir: prev.sortBy === field ? (prev.sortDir === 'asc' ? 'desc' : 'asc') : 'desc'
+    }));
+  };
 
   // 提取所有可用标签
   const allRoles = useMemo(() => {
@@ -159,7 +251,6 @@ const LevelMaker = () => {
           importedUnits = JSON.parse(content);
         } else if (file.name.endsWith('.csv')) {
           const content = event.target.result;
-          // 简单的 CSV 解析 (逗号或制表符)
           const lines = content.split('\n');
           const headers = lines[0].split(',').map(h => h.trim());
           
@@ -184,35 +275,20 @@ const LevelMaker = () => {
           const workbook = XLSX.read(data, { type: 'array' });
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-          // 针对 ArmyTable.xlsx 模板的特殊解析
-          // 第一行通常是字段名，第二行是中文描述/类型 (取决于具体导出工具)
-          // 根据之前分析：Speed 是列0, Hp 是列8, Attack 是列9, Name 是列26, ArmyTag 是列4
-          // 注意：jsonData[0] 是原始表头，jsonData[1] 可能也是描述
-          
-          const startRow = 3; // 根据分析：Row 0 是说明，Row 1 是表头，Row 2 是类型，数据从 Row 3 开始
-          
-          importedUnits = jsonData.slice(startRow).filter(row => {
-            if (!row) return false;
-            const name = row[26];
-            const hp = Number(row[7] || 0);
-            const atk = Number(row[8] || 0);
-            return name && (hp > 0 || atk > 0);
-          }).map(row => {
-            // 根据 ArmyTable.xlsx 实测分析：
-            // 26: Name, 7: Hp, 8: Attack, 15: Speed, 3: ArmyTag
+          importedUnits = jsonData.map(row => {
             return {
               id: `unit_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-              name: row[26] || '未命名', 
-              hp: Number(row[7] || 0), 
-              atk: Number(row[8] || 0), 
-              spd: Number(row[15] || 0), 
-              skillPower: 0,
-              roles: row[3] ? String(row[3]).split('|').map(r => r.trim()) : [], 
-              spawnWeight: 50
+              name: row.name || row.Name || '未命名', 
+              hp: Number(row.hp || row.Hp || row.HP || 0), 
+              atk: Number(row.atk || row.Atk || row.Attack || 0), 
+              spd: Number(row.spd || row.Spd || row.Speed || 0), 
+              skillPower: Number(row.skillPower || row.SkillPower || 0),
+              roles: row.roles ? String(row.roles).split('|').map(r => r.trim()) : (row.ArmyTag ? String(row.ArmyTag).split('|').map(r => r.trim()) : []), 
+              spawnWeight: Number(row.spawnWeight || row.SpawnWeight || 50)
             };
-          });
+          }).filter(u => u.name !== '未命名' && (u.hp > 0 || u.atk > 0));
         }
 
         if (importedUnits.length > 0) {
@@ -232,6 +308,23 @@ const LevelMaker = () => {
     }
   };
 
+  const exportToExcel = (unitsData, filename = 'units_export.xlsx') => {
+    const exportData = unitsData.map(u => ({
+      name: u.name,
+      hp: u.hp,
+      atk: u.atk,
+      spd: u.spd,
+      skillPower: u.skillPower,
+      roles: u.roles.join('|'),
+      spawnWeight: u.spawnWeight || 50
+    }));
+    
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Units");
+    XLSX.writeFile(wb, filename);
+  };
+
   // --- 数据分析计算 ---
   const levelConfig = state.levelConfig || { baseScore: 100, difficultyFactor: 1.2 };
 
@@ -246,55 +339,84 @@ const LevelMaker = () => {
   // 2. 模拟关卡分析
   const analysisResult = useMemo(() => {
     const budget = getLevelBudget(previewLevel, levelConfig);
+    const template = rosterTemplates.find(t => t.id === activeTemplateId) || rosterTemplates[0];
     
     // 简单配比算法：
     // a. 筛选所有兵种并计算分值
     const scoredUnits = state.units.map(u => ({ ...u, score: calculatePowerScore(u) }));
     
-    // b. 尝试覆盖不同标签 (简单策略: 选3个不同标签的兵种)
     const selected = [];
-    let remainingBudget = budget;
-    
-    // 按权重排序并随机挑选
-    const pool = [...scoredUnits].sort((a, b) => b.spawnWeight - a.spawnWeight);
-    
-    // 填充 3 种兵种
-    for (let i = 0; i < Math.min(3, pool.length); i++) {
-      const unit = pool[i];
-      const count = Math.max(1, Math.floor((budget / pool.length) / unit.score));
-      selected.push({ ...unit, count });
-      remainingBudget -= count * unit.score;
-    }
+    let totalCount = 0;
+    let totalHp = 0;
+
+    // 按模版配比填充
+    ['Tank', 'Warrior', 'DPS', 'CC'].forEach(roleKey => {
+      const roleBudget = budget * (template[roleKey] || 0);
+      if (roleBudget <= 0) return;
+
+      // 找出符合该职能的兵种
+      let roleUnits = scoredUnits.filter(u => {
+        if (roleKey === 'Tank') return u.roles.some(r => r.includes('肉盾') || r.includes('坦克') || r.includes('Tank') || r.includes('1'));
+        if (roleKey === 'Warrior') return u.roles.some(r => r.includes('战士') || r.includes('Warrior') || r.includes('近战'));
+        if (roleKey === 'DPS') return u.roles.some(r => r.includes('输出') || r.includes('DPS') || r.includes('射手') || r.includes('2'));
+        if (roleKey === 'CC') return u.roles.some(r => r.includes('控制') || r.includes('CC') || r.includes('辅助'));
+        return false;
+      });
+
+      if (roleUnits.length === 0) roleUnits = scoredUnits; // 保底
+
+      // 随机选一个作为代表
+      const unit = roleUnits[Math.floor(Math.random() * roleUnits.length)];
+      if (unit && unit.score > 0) {
+        let exactCount = roleBudget / unit.score;
+        let count = Math.ceil(exactCount); // 智能微调：向上取整
+        if (count > 0) {
+          selected.push({ ...unit, count, exactCount, assignedRole: roleKey });
+          totalCount += count;
+          totalHp += unit.hp * count;
+        }
+      }
+    });
 
     // 计算职能分布
     const roleStats = {};
     selected.forEach(s => {
-      s.roles.forEach(role => {
-        roleStats[role] = (roleStats[role] || 0) + s.count;
-      });
+      roleStats[s.assignedRole] = (roleStats[s.assignedRole] || 0) + s.count;
     });
 
     const pieData = Object.entries(roleStats).map(([name, value]) => ({ name, value }));
 
-    // 强度检测报告
+    // 强度检测与闭环验证报告
     const warnings = [];
-    const avgScore = budget / (selected.reduce((sum, s) => sum + s.count, 0) || 1);
+    const avgScore = budget / (totalCount || 1);
+    const estimatedDuration = totalHp / (validationConfig.expectedDPS || 1);
     
     if (avgScore > 200) warnings.push({ type: 'danger', text: '当前关卡单位战力过高，可能会造成玩家瞬间死亡，建议增加杂鱼单位比例。' });
-    if (!pieData.some(d => d.name.includes('坦克'))) warnings.push({ type: 'warning', text: '关卡缺乏前排抗伤单位，远程玩家可能会轻松风筝全场。' });
-    if (previewLevel > 10 && !selected.some(s => s.skillPower > 20)) warnings.push({ type: 'info', text: '高层关卡建议增加带有“词缀”或“高技能强度”的精英单位以增加挑战性。' });
+    if (!pieData.some(d => d.name === 'Tank')) warnings.push({ type: 'warning', text: '关卡缺乏前排抗伤单位，远程玩家可能会轻松风筝全场。' });
+    
+    // 密度验证
+    if (totalCount > validationConfig.maxDensity) warnings.push({ type: 'danger', text: `同屏怪物数量 (${totalCount}) 超过上限 (${validationConfig.maxDensity})，可能会导致严重的渲染压力！`});
+    if (totalCount < validationConfig.minDensity) warnings.push({ type: 'warning', text: `同屏怪物数量过少 (${totalCount})，可能导致关卡空洞。`});
+    
+    // 时长验证
+    if (estimatedDuration > validationConfig.targetDuration * 1.5) {
+      warnings.push({ type: 'danger', text: `预测战斗时长 ${estimatedDuration.toFixed(1)}s 远超预期 ${validationConfig.targetDuration}s，建议下调难度系数或提升玩家期望DPS。`});
+    } else if (estimatedDuration < validationConfig.targetDuration * 0.5) {
+      warnings.push({ type: 'info', text: `预测战斗时长 ${estimatedDuration.toFixed(1)}s 较短，玩家可能会迅速清场。`});
+    }
 
-    return { selected, budget, pieData, warnings };
-  }, [state.units, levelConfig, previewLevel]);
+    return { selected, budget, pieData, warnings, estimatedDuration, totalCount };
+  }, [state.units, levelConfig, previewLevel, activeTemplateId, rosterTemplates, validationConfig]);
 
-  // 3. 全关卡自动规划规划算法 (制作人视角 - 属性基数驱动版)
+  // 3. 全关卡自动规划规划算法 (基于阵容模版)
   const fullLevelPlan = useMemo(() => {
     if (state.units.length === 0) return [];
     
+    const template = rosterTemplates.find(t => t.id === activeTemplateId) || rosterTemplates[0];
+
     return Array.from({ length: previewRange }, (_, i) => {
       const level = i + 1;
       
-      // A. 计算该关卡的属性加成基数 (基于越迁配置)
       const steps = (levelConfig.spikes || []).filter(s => s.type === 'step' && level >= s.level);
       let hpCoeff = 1;
       let atkCoeff = 1;
@@ -303,17 +425,14 @@ const LevelMaker = () => {
         atkCoeff *= (s.atkMultiplier || 1);
       });
       
-      // 如果是峰值关卡，叠加峰值系数
       const peak = (levelConfig.spikes || []).find(s => s.level === level && s.type === 'peak');
       if (peak) {
         hpCoeff *= (peak.hpMultiplier || 1);
         atkCoeff *= (peak.atkMultiplier || 1);
       }
 
-      // B. 计算该关卡的总预算
       const budget = getLevelBudget(level, levelConfig);
       
-      // C. 实时计算在该属性基数下的兵种“实际分值”
       const scaledUnits = state.units.map(u => {
         const scaledUnit = {
           ...u,
@@ -326,51 +445,35 @@ const LevelMaker = () => {
         };
       });
 
-      // D. 贪婪填充算法 (确保不落空且数量合理)
       const selected = [];
-      let remaining = budget;
 
-      // 兵种池分类
-      const tanks = scaledUnits.filter(u => u.roles.some(r => r.includes('1') || r.includes('坦克')));
-      const dps = scaledUnits.filter(u => u.roles.some(r => r.includes('2') || r.includes('输出')));
-      const allPool = [...scaledUnits].sort((a, b) => a.scaledScore - b.scaledScore); // 从便宜的开始保底
+      ['Tank', 'Warrior', 'DPS', 'CC'].forEach(roleKey => {
+        const roleBudget = budget * (template[roleKey] || 0);
+        if (roleBudget <= 0) return;
 
-      // 1. 优先保底：每个核心职能至少出一个 (如果预算够)
-      [tanks, dps].forEach(pool => {
-        if (pool.length > 0) {
-          const unit = pool[Math.floor(Math.random() * pool.length)];
-          if (remaining >= unit.scaledScore) {
-            selected.push({ ...unit, count: 1 });
-            remaining -= unit.scaledScore;
+        let roleUnits = scaledUnits.filter(u => {
+          if (roleKey === 'Tank') return u.roles.some(r => r.includes('肉盾') || r.includes('坦克') || r.includes('Tank') || r.includes('1'));
+          if (roleKey === 'Warrior') return u.roles.some(r => r.includes('战士') || r.includes('Warrior') || r.includes('近战'));
+          if (roleKey === 'DPS') return u.roles.some(r => r.includes('输出') || r.includes('DPS') || r.includes('射手') || r.includes('2'));
+          if (roleKey === 'CC') return u.roles.some(r => r.includes('控制') || r.includes('CC') || r.includes('辅助'));
+          return false;
+        });
+
+        if (roleUnits.length === 0) roleUnits = scaledUnits;
+
+        const unit = roleUnits[Math.floor(Math.random() * roleUnits.length)];
+        if (unit && unit.scaledScore > 0) {
+          let exactCount = roleBudget / unit.scaledScore;
+          let count = Math.ceil(exactCount);
+          if (count > 0) {
+            selected.push({ ...unit, count, assignedRole: roleKey });
           }
         }
       });
 
-      // 2. 剩余预算填充：随机挑选并批量填充
-      let attempts = 0;
-      while (remaining > allPool[0]?.scaledScore && attempts < 10) {
-        const unit = allPool[Math.floor(Math.random() * allPool.length)];
-        if (remaining >= unit.scaledScore) {
-          // 这里的数量计算要克制，避免单一种类过多
-          const maxDesired = Math.max(1, Math.floor(budget / 5 / unit.scaledScore)); 
-          const count = Math.min(maxDesired, Math.floor(remaining / unit.scaledScore));
-          
-          if (count > 0) {
-            const existing = selected.find(s => s.id === unit.id);
-            if (existing) {
-              existing.count += count;
-            } else {
-              selected.push({ ...unit, count });
-            }
-            remaining -= count * unit.scaledScore;
-          }
-        }
-        attempts++;
-      }
-
       return { level, budget, selected, hpCoeff, atkCoeff, isBossLevel: !!peak };
     });
-  }, [state.units, levelConfig, previewRange]);
+  }, [state.units, levelConfig, previewRange, activeTemplateId, rosterTemplates]);
 
   return (
     <div className="level-maker-container">
@@ -381,6 +484,9 @@ const LevelMaker = () => {
         </button>
         <button className={activeTab === 'budget' ? 'active' : ''} onClick={() => setActiveTab('budget')}>
           <Target size={18} /> 难度预算配置
+        </button>
+        <button className={activeTab === 'planning' ? 'active' : ''} onClick={() => setActiveTab('planning')}>
+          <Sliders size={18} /> 兵种与阵容规划
         </button>
         <button className={activeTab === 'plan' ? 'active' : ''} onClick={() => setActiveTab('plan')}>
           <TrendingUp size={18} /> 全关卡部署规划
@@ -413,6 +519,9 @@ const LevelMaker = () => {
                   />
                   <button className="btn-outline" onClick={() => document.getElementById('unit-import').click()}>
                     <Upload size={16} /> 导入配置 (Excel/CSV/JSON)
+                  </button>
+                  <button className="btn-outline" onClick={() => exportToExcel(state.units, 'units_export.xlsx')}>
+                    <Download size={16} /> 导出至 Excel
                   </button>
                   <button className="btn-primary" onClick={() => setEditingUnit({})}>
                     <Plus size={16} /> 新增兵种
@@ -502,28 +611,80 @@ const LevelMaker = () => {
                 </div>
               </div>
 
-              <div className="unit-cards">
-                {filteredUnits.map(unit => (
-                  <div key={unit.id} className="unit-card glass">
-                    <div className="unit-card-header">
-                      <h3>{unit.name}</h3>
-                      <div className="score-badge">{calculatePowerScore(unit)} pt</div>
+              <div className="units-table glass" style={{ 
+                marginTop: '1rem', 
+                borderRadius: '12px', 
+                overflow: 'hidden',
+                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(0,0,0,0.2)'
+              }}>
+                <div className="table-header" style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: '100px 200px 70px 70px 70px 70px 100px 1fr 70px 100px',
+                  padding: '14px 20px',
+                  background: 'rgba(255,255,255,0.05)',
+                  fontWeight: '600',
+                  fontSize: '0.8rem',
+                  color: 'var(--text-muted)',
+                  borderBottom: '1px solid rgba(255,255,255,0.1)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('score')}>ID 标识</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('name')}>兵种名称 {unitFilter.sortBy === 'name' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('hp')}>HP {unitFilter.sortBy === 'hp' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('atk')}>ATK {unitFilter.sortBy === 'atk' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('spd')}>SPD {unitFilter.sortBy === 'spd' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('skillPower')}>SKL {unitFilter.sortBy === 'skillPower' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('score')}>战力评分 {unitFilter.sortBy === 'score' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span>职能标签</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('weight')}>权重 {unitFilter.sortBy === 'weight' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+                  <span style={{ textAlign: 'right' }}>管理</span>
+                </div>
+                <div className="table-body" style={{ maxHeight: 'calc(100vh - 450px)', overflowY: 'auto' }}>
+                  {filteredUnits.length === 0 && (
+                    <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      没有找到匹配的兵种，请尝试调整筛选条件或导入配置。
                     </div>
-                    <div className="unit-stats-grid">
-                      <div className="stat-row"><span>HP:</span> <b>{unit.hp}</b></div>
-                      <div className="stat-row"><span>ATK:</span> <b>{unit.atk}</b></div>
-                      <div className="stat-row"><span>SPD:</span> <b>{unit.spd}</b></div>
-                      <div className="stat-row"><span>SKL:</span> <b>{unit.skillPower}</b></div>
+                  )}
+                  {filteredUnits.map(unit => (
+                    <div key={unit.id} className="table-row" style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: '100px 200px 70px 70px 70px 70px 100px 1fr 70px 100px',
+                      padding: '12px 20px',
+                      alignItems: 'center',
+                      fontSize: '0.85rem',
+                      borderBottom: '1px solid rgba(255,255,255,0.03)',
+                      transition: 'all 0.2s ease'
+                    }}>
+                      <span style={{ fontSize: '0.85rem', color: unit.id >= 90000 ? 'var(--accent-warning)' : '#888', fontFamily: 'monospace', fontWeight: 'bold' }}>
+                        {unit.id}
+                      </span>
+                      <span style={{ fontWeight: '600', color: '#fff' }}>{unit.name}</span>
+                      <span style={{ color: '#FF5252', fontWeight: '500' }}>{unit.hp}</span>
+                      <span style={{ color: '#FFAB40', fontWeight: '500' }}>{unit.atk}</span>
+                      <span style={{ color: '#00E5FF', fontWeight: '500' }}>{unit.spd}</span>
+                      <span style={{ color: '#E040FB', fontWeight: '500' }}>{unit.skillPower}</span>
+                      <span style={{ fontWeight: '800', color: 'var(--accent-primary)', fontSize: '0.9rem' }}>{calculatePowerScore(unit)}</span>
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {unit.roles.map(role => (
+                          <span key={role} className="tag" style={{ 
+                            fontSize: '0.6rem', 
+                            padding: '2px 8px', 
+                            borderRadius: '4px',
+                            background: role.startsWith('T') ? 'rgba(0, 229, 255, 0.1)' : 'rgba(255,255,255,0.05)',
+                            color: role.startsWith('T') ? '#00E5FF' : 'inherit'
+                          }}>{role}</span>
+                        ))}
+                      </div>
+                      <span style={{ color: 'var(--text-muted)' }}>{unit.spawnWeight}</span>
+                      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                        <button onClick={() => setEditingUnit(unit)} style={{ padding: '6px', background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer' }}><Edit3 size={14} /></button>
+                        <button onClick={() => dispatch({ type: 'DELETE_UNIT', payload: unit.id })} style={{ padding: '6px', background: 'rgba(255,100,100,0.1)', border: 'none', borderRadius: '4px', color: '#FF5252', cursor: 'pointer' }}><Trash2 size={14} /></button>
+                      </div>
                     </div>
-                    <div className="unit-tags">
-                      {unit.roles.map(role => <span key={role} className="tag">{role}</span>)}
-                    </div>
-                    <div className="unit-actions">
-                      <button onClick={() => setEditingUnit(unit)}><Edit3 size={14} /></button>
-                      <button className="delete" onClick={() => dispatch({ type: 'DELETE_UNIT', payload: unit.id })}><Trash2 size={14} /></button>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
 
               {/* 兵种编辑 Modal (内联实现) */}
@@ -784,6 +945,267 @@ const LevelMaker = () => {
                       <Line type="monotone" dataKey="budget" stroke="var(--accent-primary)" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 8 }} />
                     </LineChart>
                   </ResponsiveContainer>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* 2.5 兵种属性与阵容规划 */}
+          {activeTab === 'planning' && (
+            <motion.div 
+              key="planning"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              className="planning-dashboard"
+            >
+              <div className="planning-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                
+                {/* 左侧：兵种派生与权重 */}
+                <div className="planning-left" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                  
+                  {/* 职能权重配置 */}
+                  <div className="planning-card glass">
+                    <h3><Crosshair size={18} color="var(--accent-primary)" /> 职能属性权重 (Role Weights)</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>基于标准单位(100%)，计算不同职能的属性偏移。</p>
+                    <div className="weights-table">
+                      <div className="weight-header" style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr 1fr', fontWeight: 'bold', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
+                        <span>职能</span><span>HP权重</span><span>ATK权重</span><span>机制加成</span>
+                      </div>
+                      {Object.keys(roleWeights).map(role => (
+                        <div key={role} className="weight-row" style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr 1fr', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+                          <span style={{ fontWeight: 'bold', color: 'var(--text-secondary)' }}>{role}</span>
+                          <input type="number" step="0.1" value={roleWeights[role].hp} onChange={(e) => setRoleWeights({...roleWeights, [role]: {...roleWeights[role], hp: Number(e.target.value)}})} style={{width: '100%'}}/>
+                          <input type="number" step="0.1" value={roleWeights[role].atk} onChange={(e) => setRoleWeights({...roleWeights, [role]: {...roleWeights[role], atk: Number(e.target.value)}})} style={{width: '100%'}}/>
+                          <input type="number" step="0.1" value={roleWeights[role].cc} onChange={(e) => setRoleWeights({...roleWeights, [role]: {...roleWeights[role], cc: Number(e.target.value)}})} style={{width: '100%'}}/>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 一键派生器 */}
+                  <div className="planning-card glass">
+                    <h3><Zap size={18} color="var(--accent-warning)" /> 兵种一键派生 (Unit Derivation)</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+                      <div className="input-row">
+                        <div className="input-group">
+                          <label>基准 HP</label>
+                          <input type="number" value={derivationParams.baseHp} onChange={e => setDerivationParams({...derivationParams, baseHp: Number(e.target.value)})} />
+                        </div>
+                        <div className="input-group">
+                          <label>基准 ATK</label>
+                          <input type="number" value={derivationParams.baseAtk} onChange={e => setDerivationParams({...derivationParams, baseAtk: Number(e.target.value)})} />
+                        </div>
+                      </div>
+                      <div className="input-row">
+                        <div className="input-group">
+                          <label>基准 SPD</label>
+                          <input type="number" value={derivationParams.baseSpd} onChange={e => setDerivationParams({...derivationParams, baseSpd: Number(e.target.value)})} />
+                        </div>
+                        <div className="input-group">
+                          <label>目标职能</label>
+                          <select value={derivationParams.targetRole} onChange={e => setDerivationParams({...derivationParams, targetRole: e.target.value})} style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '8px' }}>
+                            {Object.keys(roleWeights).map(r => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="input-group">
+                        <label>生成兵种名称</label>
+                        <input type="text" value={derivationParams.unitName} onChange={e => setDerivationParams({...derivationParams, unitName: e.target.value})} />
+                      </div>
+                      <button className="btn-primary" onClick={() => {
+                        const weights = roleWeights[derivationParams.targetRole];
+                        const newUnit = {
+                          id: getNextIdForRole(derivationParams.targetRole),
+                          name: derivationParams.unitName,
+                          hp: Math.round(derivationParams.baseHp * weights.hp),
+                          atk: Math.round(derivationParams.baseAtk * weights.atk),
+                          spd: derivationParams.baseSpd,
+                          skillPower: Math.round(weights.cc * 100),
+                          roles: [derivationParams.targetRole],
+                          spawnWeight: 50
+                        };
+                        dispatch({ type: 'ADD_UNIT', payload: newUnit });
+                        alert(`已成功派生兵种: ${newUnit.name} (ID: ${newUnit.id})\nHP: ${newUnit.hp}, ATK: ${newUnit.atk}`);
+                      }}>
+                        生成并加入兵种库
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 右侧：矩阵生成器与模版 */}
+                <div className="planning-right" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                  
+                  {/* 矩阵生成器 (Matrix Generator) */}
+                  <div className="planning-card glass" style={{ border: '1px solid var(--accent-primary)', boxShadow: '0 0 20px rgba(124, 77, 255, 0.1)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                      <h3 style={{ margin: 0 }}><BarChart3 size={18} color="var(--accent-primary)" /> 矩阵生成器 (Matrix Generator)</h3>
+                      <span className="badge" style={{ background: 'var(--accent-primary)', fontSize: '0.7rem' }}>BETA</span>
+                    </div>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>根据高维度规划自动批量裂变兵种库。</p>
+                    
+                    <div className="config-matrix" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                      <div className="input-row">
+                        <div className="input-group">
+                          <label>预期总关卡数</label>
+                          <input type="number" value={matrixConfig.totalLevels} onChange={e => setMatrixConfig({...matrixConfig, totalLevels: Number(e.target.value)})} />
+                        </div>
+                        <div className="input-group">
+                          <label>兵种迭代密度 (每N关)</label>
+                          <input type="number" value={matrixConfig.updateFrequency} onChange={e => setMatrixConfig({...matrixConfig, updateFrequency: Number(e.target.value)})} />
+                        </div>
+                      </div>
+
+                      <div className="input-group">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <label>随机波动方差 (Randomness)</label>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--accent-primary)' }}>{Math.round(matrixConfig.randomness * 100)}%</span>
+                        </div>
+                        <input type="range" min="0" max="0.5" step="0.05" value={matrixConfig.randomness} onChange={e => setMatrixConfig({...matrixConfig, randomness: Number(e.target.value)})} style={{ width: '100%' }} />
+                      </div>
+
+                      <div className="role-proportions glass" style={{ padding: '1rem', borderRadius: '12px', background: 'rgba(0,0,0,0.2)' }}>
+                        <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1rem', display: 'block' }}>职能分布权重 (库级占比)</label>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                          {Object.keys(matrixConfig.roleDistribution).map(role => (
+                            <div key={role} className="input-group">
+                              <label style={{ fontSize: '0.7rem' }}>{role} %</label>
+                              <input type="number" step="0.05" value={matrixConfig.roleDistribution[role]} onChange={e => {
+                                const newDist = {...matrixConfig.roleDistribution, [role]: Number(e.target.value)};
+                                setMatrixConfig({...matrixConfig, roleDistribution: newDist});
+                              }} />
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: '0.75rem', fontSize: '0.7rem', color: Object.values(matrixConfig.roleDistribution).reduce((a,b)=>a+b,0).toFixed(2) === '1.00' ? '#00E676' : '#FF5252' }}>
+                          分布系数总和: {Object.values(matrixConfig.roleDistribution).reduce((a,b)=>a+b,0).toFixed(2)} (应为 1.0)
+                        </div>
+                      </div>
+
+                      <div className="input-group">
+                        <label>Boss 产出频率 (每 N 个普通怪)</label>
+                        <input type="number" value={matrixConfig.bossFrequency} onChange={e => setMatrixConfig({...matrixConfig, bossFrequency: Number(e.target.value)})} />
+                      </div>
+
+                      <button className="btn-primary" style={{ height: '50px', fontSize: '1rem' }} onClick={() => {
+                        const totalTypes = Math.ceil(matrixConfig.totalLevels / matrixConfig.updateFrequency);
+                        const newUnits = [];
+                        
+                        Object.keys(matrixConfig.roleDistribution).forEach(role => {
+                          const count = Math.round(totalTypes * matrixConfig.roleDistribution[role]);
+                          const weights = roleWeights[role];
+                          
+                          for (let i = 0; i < count; i++) {
+                            // 阶层计算 (Tier 1 to 4)
+                            const tier = Math.min(4, Math.ceil((i + 1) / (count / 4)));
+                            const tierMultiplier = 1 + (tier - 1) * 0.5; // T2=1.5, T3=2.0, T4=2.5
+                            
+                            // 是否为 Boss (根据频率)
+                            const isBoss = (i + 1) % matrixConfig.bossFrequency === 0;
+                            const bossMultiplier = isBoss ? 4.0 : 1.0; // Boss 血量 4 倍
+                            const bossAtkMultiplier = isBoss ? 1.5 : 1.0; // Boss 攻击 1.5 倍
+
+                            // 变异系数
+                            const hpMut = 1 + (Math.random() * 2 - 1) * matrixConfig.randomness;
+                            const atkMut = 1 + (Math.random() * 2 - 1) * matrixConfig.randomness;
+                            
+                            const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+                            const bossPrefix = isBoss ? BOSS_PREFIXES[Math.floor(Math.random() * BOSS_PREFIXES.length)] : '';
+                            const roleName = ROLE_NAMES[role];
+                            
+                            const finalId = getNextIdForRole(isBoss ? 'Boss' : role);
+
+                            newUnits.push({
+                              id: finalId,
+                              name: `${bossPrefix}${adj}${roleName} T${tier}`,
+                              hp: Math.round(derivationParams.baseHp * weights.hp * tierMultiplier * hpMut * bossMultiplier),
+                              atk: Math.round(derivationParams.baseAtk * weights.atk * tierMultiplier * atkMut * bossAtkMultiplier),
+                              spd: derivationParams.baseSpd + Math.floor(Math.random() * 5),
+                              skillPower: Math.round(weights.cc * 100 + (tier - 1) * 20 + (isBoss ? 50 : 0)),
+                              roles: [role, `T${tier}`, isBoss ? 'Boss' : 'Elite'].filter(Boolean),
+                              spawnWeight: isBoss ? 10 : 50 // Boss 出现权重低
+                            });
+                          }
+                        });
+                        
+                        if (confirm(`系统即将生成 ${newUnits.length} 个兵种并加入库中，是否继续？`)) {
+                          dispatch({ type: 'IMPORT_UNITS', payload: newUnits });
+                          alert('矩阵生成完毕！您可以切换回“兵种建模库”查看结果。');
+                        }
+                      }}>
+                        <Zap size={18} /> 一键批量生成兵种矩阵
+                      </button>
+                    </div>
+                  </div>
+
+                  
+                  {/* 阵容模版管理 */}
+                  <div className="planning-card glass">
+                    <h3><Users size={18} color="var(--accent-secondary)" /> 阵容模版 (Roster Templates)</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>定义不同关卡的战力分配预算比例。总和应为 1.0 (100%)。</p>
+                    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                      <select value={activeTemplateId} onChange={(e) => setActiveTemplateId(e.target.value)} style={{ flex: 1, padding: '0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '8px' }}>
+                        {rosterTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
+                      <button className="btn-outline" onClick={() => {
+                        const newId = `t${Date.now()}`;
+                        setRosterTemplates([...rosterTemplates, { id: newId, name: '新模版', Tank: 0.25, Warrior: 0.25, DPS: 0.25, CC: 0.25 }]);
+                        setActiveTemplateId(newId);
+                      }}><Plus size={16} /></button>
+                    </div>
+
+                    {rosterTemplates.map(t => t.id === activeTemplateId && (
+                      <div key={t.id} className="template-editor" style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px' }}>
+                        <div className="input-group">
+                          <label>模版名称</label>
+                          <input type="text" value={t.name} onChange={(e) => {
+                            setRosterTemplates(rosterTemplates.map(rt => rt.id === t.id ? {...rt, name: e.target.value} : rt));
+                          }} />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                          {['Tank', 'Warrior', 'DPS', 'CC'].map(role => (
+                            <div key={role} className="input-group">
+                              <label>{role} 比例</label>
+                              <input type="number" step="0.05" value={t[role]} onChange={(e) => {
+                                setRosterTemplates(rosterTemplates.map(rt => rt.id === t.id ? {...rt, [role]: Number(e.target.value)} : rt));
+                              }} />
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: (t.Tank + t.Warrior + t.DPS + t.CC).toFixed(2) === '1.00' ? '#00E676' : '#FF5252' }}>
+                          当前比例总和: {(t.Tank + t.Warrior + t.DPS + t.CC).toFixed(2)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 闭环验证参数 */}
+                  <div className="planning-card glass">
+                    <h3><ShieldAlert size={18} color="var(--accent-danger)" /> 闭环验证参数 (Validation)</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>用于模拟关卡的战斗时长和同屏压力预警。</p>
+                    <div className="input-row">
+                      <div className="input-group">
+                        <label>期望玩家 DPS</label>
+                        <input type="number" value={validationConfig.expectedDPS} onChange={e => setValidationConfig({...validationConfig, expectedDPS: Number(e.target.value)})} />
+                      </div>
+                      <div className="input-group">
+                        <label>期望通关时长(s)</label>
+                        <input type="number" value={validationConfig.targetDuration} onChange={e => setValidationConfig({...validationConfig, targetDuration: Number(e.target.value)})} />
+                      </div>
+                    </div>
+                    <div className="input-row">
+                      <div className="input-group">
+                        <label>最大同屏数量</label>
+                        <input type="number" value={validationConfig.maxDensity} onChange={e => setValidationConfig({...validationConfig, maxDensity: Number(e.target.value)})} />
+                      </div>
+                      <div className="input-group">
+                        <label>最小同屏数量</label>
+                        <input type="number" value={validationConfig.minDensity} onChange={e => setValidationConfig({...validationConfig, minDensity: Number(e.target.value)})} />
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
               </div>
             </motion.div>

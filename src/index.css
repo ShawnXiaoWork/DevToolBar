@@ -355,3 +355,156 @@ h3 { font-size: 1.4rem; }
 .pulse {
   animation: pulse 2s infinite;
 }
+
+/* --- Mobile Responsive Support --- */
+@media (max-width: 1024px) {
+  .workbench-content {
+    padding-right: 2rem; /* Hide space for monitor on tablet */
+  }
+  .global-monitor {
+    position: relative;
+    top: 0;
+    right: 0;
+    width: 100%;
+    height: auto;
+    padding: 1rem 0;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --sidebar-width: 100%;
+  }
+
+  .header {
+    padding: 0 1rem;
+  }
+
+  .nav {
+    display: none; /* Can be replaced with a hamburger later */
+  }
+
+  .workbench-container {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .workbench-sidebar {
+    width: 100%;
+    height: auto;
+    border-right: none;
+    border-bottom: var(--glass-border);
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0.5rem;
+    white-space: nowrap;
+  }
+
+  .workflow-step {
+    padding: 0.75rem 1rem;
+    border-left: none;
+    border-bottom: 3px solid transparent;
+  }
+
+  .workflow-step.active {
+    border-bottom-color: var(--accent-primary);
+  }
+
+  .workbench-content {
+    padding: 1rem;
+  }
+
+  .module-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+  }
+
+  .module-tabs button {
+    white-space: nowrap;
+    padding: 8px 16px;
+  }
+
+  /* Planning Dashboard Mobile */
+  .planning-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .units-table .table-header,
+  .units-table .table-row {
+    grid-template-columns: 60px 140px 1fr 80px !important; /* Simplified for mobile */
+  }
+
+  .units-table .table-header span:nth-child(n+4):nth-child(-n+8),
+  .units-table .table-row span:nth-child(n+4):nth-child(-n+8) {
+    display: none; /* Hide intermediate stats on mobile table */
+  }
+
+  .action-bar {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 1rem;
+  }
+
+  .action-bar div {
+    width: 100%;
+    overflow-x: auto;
+  }
+}
+
+/* LevelMaker Specific Styles */
+.units-table {
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: var(--glass-blur);
+}
+
+.table-row:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.tag {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  width: 100%;
+  max-width: 500px;
+  padding: 2rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.units-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
