@@ -28,8 +28,12 @@ export const AuthProvider = ({ children }) => {
   const handleCallback = async (code) => {
     setLoading(true);
     try {
-      // 调用我们在 vite.config.js 中定义的代理接口
-      const response = await fetch(`${window.location.origin}/api/auth/github?code=${code}`);
+      // 使用 Cloudflare Worker 处理 Client Secret，保证前端安全
+      const response = await fetch("https://githubdevyool.xiao19890526.workers.dev", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code })
+      });
       const data = await response.json();
 
       if (data.access_token) {
@@ -39,7 +43,7 @@ export const AuthProvider = ({ children }) => {
         window.history.replaceState({}, document.title, REDIRECT_URI);
         fetchUserInfo(data.access_token);
       } else {
-        throw new Error(data.error_description || '获取 Token 失败');
+        throw new Error(data.error_description || data.error || '获取 Token 失败');
       }
     } catch (err) {
       setError(err.message);

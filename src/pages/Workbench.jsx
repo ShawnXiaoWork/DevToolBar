@@ -6,21 +6,23 @@ import {
   PieChart, 
   ShieldCheck,
   Zap,
-  TrendingUp
+  TrendingUp,
+  UserCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 import Dictionary from './Dictionary';
+import PlayerModel from './PlayerModel';
 import FeatureConfig from './FeatureConfig';
 import MacroPanel from './MacroPanel';
 import Validation from './Validation';
 
 const steps = [
-  { id: 'dictionary', title: '1. 基础字典', desc: '资源与价值锚点', icon: Book },
-  { id: 'feature', title: '2. 模块定义', desc: '功能与消耗结构', icon: Settings },
-  { id: 'macro', title: '3. 宏观分配', desc: '权重与成长节奏', icon: PieChart },
-  { id: 'validation', title: '4. 模型校验', desc: '数值平衡验证', icon: ShieldCheck },
+  { id: 'dictionary', title: '1. 资源基石', desc: '资源与价值锚点', icon: Book },
+  { id: 'playerModel', title: '2. 玩家模型', desc: '时长与进度设定', icon: UserCircle },
+  { id: 'feature', title: '3. 产耗配置', desc: '功能与推演卡片', icon: Settings },
+  { id: 'validation', title: '4. 全局审计', desc: '红绿灯预警分析', icon: ShieldCheck },
 ];
 
 const COLORS = ['#7C4DFF', '#00E5FF', '#00E676', '#FFAB40', '#FF5252'];
@@ -32,8 +34,8 @@ const Workbench = () => {
   const renderContent = () => {
     switch(activeStep) {
       case 'dictionary': return <Dictionary />;
+      case 'playerModel': return <PlayerModel />;
       case 'feature': return <FeatureConfig />;
-      case 'macro': return <MacroPanel />;
       case 'validation': return <Validation />;
       default: return <Dictionary />;
     }
