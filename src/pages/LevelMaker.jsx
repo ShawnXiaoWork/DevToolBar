@@ -164,9 +164,10 @@ const LevelMaker = () => {
     Boss: 90000
   };
 
-  const getNextIdForRole = (role) => {
+  const getNextIdForRole = (role, currentBatch = []) => {
     const rangeStart = ROLE_ID_RANGES[role] || 50000;
-    const existingIds = state.units
+    const combinedUnits = [...state.units, ...currentBatch];
+    const existingIds = combinedUnits
       .map(u => parseInt(u.id))
       .filter(id => !isNaN(id) && id >= rangeStart && id < rangeStart + 10000);
     const maxId = existingIds.length > 0 ? Math.max(...existingIds) : rangeStart;
@@ -195,6 +196,10 @@ const LevelMaker = () => {
           case 'score': valA = calculatePowerScore(a); valB = calculatePowerScore(b); break;
           case 'name': return a.name.localeCompare(b.name) * dir;
           case 'weight': valA = a.spawnWeight; valB = b.spawnWeight; break;
+          case 'id': 
+            valA = parseInt(a.id) || 0; 
+            valB = parseInt(b.id) || 0; 
+            break;
           default: valA = calculatePowerScore(a); valB = calculatePowerScore(b);
         }
         
@@ -311,6 +316,7 @@ const LevelMaker = () => {
 
   const exportToExcel = (unitsData, filename = 'units_export.xlsx') => {
     const exportData = unitsData.map(u => ({
+      id: u.id,
       name: u.name,
       hp: u.hp,
       atk: u.atk,
@@ -324,6 +330,24 @@ const LevelMaker = () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Units");
     XLSX.writeFile(wb, filename);
+  };
+
+  const exportLevelPlanToExcel = () => {
+    const data = fullLevelPlan.map(lp => ({
+      '关卡': lp.level,
+      '目标阶层': lp.targetTier,
+      '总预算': lp.budget,
+      '是否Boss关': lp.isBossLevel ? '是' : '否',
+      'HP系数': lp.hpCoeff.toFixed(2),
+      'ATK系数': lp.atkCoeff.toFixed(2),
+      '阵容构成': lp.selected.map(s => `${s.name}(ID:${s.id}) x${s.count}`).join('; '),
+      '单位详情': lp.selected.map(s => `[${s.name}: HP:${s.hp}, ATK:${s.atk}]`).join(' | ')
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "LevelPlan");
+    XLSX.writeFile(wb, `LevelPlan_${Date.now()}.xlsx`);
   };
 
   // --- 数据分析计算 ---
@@ -415,8 +439,17 @@ const LevelMaker = () => {
     
     const template = rosterTemplates.find(t => t.id === activeTemplateId) || rosterTemplates[0];
 
+    // 辅助规则：根据关卡决定当前主打的 Tier
+    const getTargetTier = (level) => {
+      if (level <= 20) return 'T1';
+      if (level <= 50) return 'T2';
+      if (level <= 80) return 'T3';
+      return 'T4';
+    };
+
     return Array.from({ length: previewRange }, (_, i) => {
       const level = i + 1;
+      const targetTier = getTargetTier(level);
       
       const steps = (levelConfig.spikes || []).filter(s => s.type === 'step' && level >= s.level);
       let hpCoeff = 1;
@@ -447,22 +480,37 @@ const LevelMaker = () => {
       });
 
       const selected = [];
+      const isBossLevel = !!peak;
 
       ['Tank', 'Warrior', 'DPS', 'CC'].forEach(roleKey => {
         const roleBudget = budget * (template[roleKey] || 0);
         if (roleBudget <= 0) return;
 
+        // 1. 职能过滤
         let roleUnits = scaledUnits.filter(u => {
-          if (roleKey === 'Tank') return u.roles.some(r => r.includes('肉盾') || r.includes('坦克') || r.includes('Tank') || r.includes('1'));
-          if (roleKey === 'Warrior') return u.roles.some(r => r.includes('战士') || r.includes('Warrior') || r.includes('近战'));
-          if (roleKey === 'DPS') return u.roles.some(r => r.includes('输出') || r.includes('DPS') || r.includes('射手') || r.includes('2'));
-          if (roleKey === 'CC') return u.roles.some(r => r.includes('控制') || r.includes('CC') || r.includes('辅助'));
+          if (roleKey === 'Tank') return u.roles.some(r => r.includes('Tank') || r.includes('肉盾') || r.includes('坦克'));
+          if (roleKey === 'Warrior') return u.roles.some(r => r.includes('Warrior') || r.includes('战士') || r.includes('近战'));
+          if (roleKey === 'DPS') return u.roles.some(r => r.includes('DPS') || r.includes('输出') || r.includes('射手'));
+          if (roleKey === 'CC') return u.roles.some(r => r.includes('CC') || r.includes('控制') || r.includes('辅助'));
           return false;
         });
 
         if (roleUnits.length === 0) roleUnits = scaledUnits;
 
-        const unit = roleUnits[Math.floor(Math.random() * roleUnits.length)];
+        // 2. 制作人规则：如果是 Boss 关，优先选 Boss 标签的单位
+        let pool = roleUnits;
+        if (isBossLevel) {
+          const bossPool = pool.filter(u => u.roles.includes('Boss'));
+          if (bossPool.length > 0) pool = bossPool;
+        }
+
+        // 3. 制作人规则：优先选当前 Tier 的单位，模拟成长感
+        const tierPool = pool.filter(u => u.roles.includes(targetTier));
+        if (tierPool.length > 0) pool = tierPool;
+
+        // 4. 制作人规则：每 5 关引入感 (通过随机种子或偏移量选择，这里简化为随机)
+        const unit = pool[Math.floor(Math.random() * pool.length)];
+        
         if (unit && unit.scaledScore > 0) {
           let exactCount = roleBudget / unit.scaledScore;
           let count = Math.ceil(exactCount);
@@ -472,7 +520,7 @@ const LevelMaker = () => {
         }
       });
 
-      return { level, budget, selected, hpCoeff, atkCoeff, isBossLevel: !!peak };
+      return { level, budget, selected, hpCoeff, atkCoeff, isBossLevel, targetTier };
     });
   }, [state.units, levelConfig, previewRange, activeTemplateId, rosterTemplates]);
 
@@ -638,7 +686,7 @@ const LevelMaker = () => {
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px'
                 }}>
-                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('score')}>ID 标识</span>
+                  <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('id')}>ID 标识 {unitFilter.sortBy === 'id' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
                   <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('name')}>兵种名称 {unitFilter.sortBy === 'name' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
                   <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('hp')}>HP {unitFilter.sortBy === 'hp' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
                   <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('atk')}>ATK {unitFilter.sortBy === 'atk' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
@@ -1122,7 +1170,7 @@ const LevelMaker = () => {
                             const bossPrefix = isBoss ? BOSS_PREFIXES[Math.floor(Math.random() * BOSS_PREFIXES.length)] : '';
                             const roleName = ROLE_NAMES[role];
                             
-                            const finalId = getNextIdForRole(isBoss ? 'Boss' : role);
+                            const finalId = getNextIdForRole(isBoss ? 'Boss' : role, newUnits);
 
                             newUnits.push({
                               id: finalId,
@@ -1232,17 +1280,22 @@ const LevelMaker = () => {
                   <h2>全关卡自动部署规划 (Producer Plan)</h2>
                   <p>基于当前难度曲线与兵种库，系统已自动计算并分配了前 {previewRange} 关的敌军阵容。</p>
                 </div>
-                <button className="btn-primary" onClick={() => {
-                  const content = JSON.stringify(fullLevelPlan, null, 2);
-                  const blob = new Blob([content], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `level_plan_${Date.now()}.json`;
-                  a.click();
-                }}>
-                  <Upload size={16} /> 导出配置 (JSON)
-                </button>
+                <div className="plan-actions" style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button className="btn-outline" onClick={exportLevelPlanToExcel}>
+                    <Download size={16} /> 导出全关卡规划 (Excel)
+                  </button>
+                  <button className="btn-primary" onClick={() => {
+                    const content = JSON.stringify(fullLevelPlan, null, 2);
+                    const blob = new Blob([content], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `level_plan_${Date.now()}.json`;
+                    a.click();
+                  }}>
+                    <Upload size={16} /> 导出配置 (JSON)
+                  </button>
+                </div>
               </div>
 
               <div className="plan-list">
