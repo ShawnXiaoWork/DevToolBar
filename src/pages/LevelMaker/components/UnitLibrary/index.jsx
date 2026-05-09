@@ -10,6 +10,65 @@ import { calculatePowerScore } from '../../utils/planningUtils';
 const UnitLibrary = ({ state, dispatch }) => {
   const [editingUnit, setEditingUnit] = useState(null);
   const [unitFilter, setUnitFilter] = useState({ name: '', roles: [], sortBy: 'id', sortDir: 'asc' });
+  const [default1001, setDefault1001] = useState(null);
+  const [tableHeaders, setTableHeaders] = useState(null);
+  const [templateRows, setTemplateRows] = useState([]);
+
+  // 加载 1001 参考数据及表头模板
+  React.useEffect(() => {
+    // 静态兜底数据 (万一 fetch 失败或 ID 找不到)
+    const STATIC_FALLBACK_1001 = {
+      '#': '', 'Id': 1001, 'Note': '剑士', 'ArmyTag': 0, 'Cost': 0, 'SpawnRates': 0.4, 'ArenaCount': 1,
+      'Hp': 1000, 'Attack': 200, 'HpFake': 900, 'AttackFake': 180, 'AttackFreq': 1,
+      'HPGrow': "[[2,10],[20,15],[40,20],[60,25],[80,30],[100,35],[120,40],[140,45],[160,50],[180,55],[200,60]]",
+      'AttackGrow': "[[2,2],[20,3],[40,4],[60,5],[80,6],[100,7],[120,8],[140,9],[160,10],[180,11],[200,12]]",
+      'Speed': 75, 'AttackRange': 84, 'FindRange': 300, 'Aim': 1, 'Style': 0, 'Race': 1,
+      'FeaturesOther': "[2]", 'MaxRow': 15, 'Bullet': 0, 'Icon': "m1001", 'Prefab': "Arm1001",
+      'Name': "armyName.1001", 'Description': "armyDescription.1001",
+      'DieSfx': "[101,102,103,104,105,106,107,108,109]", 'RecruitingSfx': "[1002]",
+      'Skill0Sfx': "[21,22,23,24,25,26,27,28]", 'Skill1Sfx': "[-1]",
+      'Resistance': "[0.1,0.1,0,0,0,0]", 'BuffResistance': "[0,0,0,0]",
+      'FatherHpRate': 0, 'FatherAttackRate': 0, 'Stability': 1
+    };
+
+    fetch('/ArmyTable.xlsx')
+      .then(res => res.arraybuffer())
+      .then(buffer => {
+        const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        
+        // 保存前 4 行模板 (注释、表头、类型、描述)
+        const templates = jsonData.slice(0, 4);
+        setTemplateRows(templates);
+
+        const headers = jsonData[1];
+        setTableHeaders(headers);
+
+        const idIdx = headers.indexOf('Id');
+        const row1001 = jsonData.find(r => r[idIdx] == 1001 || r[idIdx] === '1001');
+        
+        if (row1001) {
+          const data = {};
+          headers.forEach((h, i) => {
+            if (h) data[h] = row1001[i];
+          });
+          delete data.Bullet;
+          delete data.Prefab;
+          setDefault1001(data);
+        } else {
+          console.warn('ID 1001 not found in ArmyTable, using fallback.');
+          setDefault1001(STATIC_FALLBACK_1001);
+        }
+      }).catch(err => {
+        console.error('Failed to load ArmyTable for defaults:', err);
+        // 如果 fetch 失败，使用静态兜底
+        const fallbackHeaders = Object.keys(STATIC_FALLBACK_1001);
+        setDefault1001(STATIC_FALLBACK_1001);
+        setTableHeaders(fallbackHeaders);
+        setTemplateRows([[], fallbackHeaders, [], []]); // 至少保证有表头行
+      });
+  }, []);
 
   // --- 兵种过滤逻辑 ---
   const filteredUnits = useMemo(() => {
@@ -105,14 +164,14 @@ const UnitLibrary = ({ state, dispatch }) => {
           const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
           importedUnits = jsonData.map(row => ({
-            id: `unit_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-            name: row.name || row.Name || '未命名',
-            hp: Number(row.hp || row.Hp || row.HP || 0),
-            atk: Number(row.atk || row.Atk || row.Attack || 0),
-            atkSpeed: Number(row.atkSpeed || row.AtkSpeed || row.ASP || 1.0),
-            atkRange: Number(row.atkRange || row.AtkRange || row.ARNG || 100),
-            detRange: Number(row.detRange || row.DetRange || row.DRNG || 200),
-            spd: Number(row.spd || row.Spd || row.Speed || 0),
+            id: row.Id || row.id || `unit_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            name: row.Name || row.name || row.Note || '未命名',
+            hp: Number(row.Hp || row.hp || row.HP || 0),
+            atk: Number(row.Attack || row.atk || row.Attack || 0),
+            atkSpeed: Number(row.AttackFreq || row.atkSpeed || row.ASP || 1.0),
+            atkRange: Number(row.AttackRange || row.atkRange || row.ARNG || 100),
+            detRange: Number(row.FindRange || row.detRange || row.DRNG || 200),
+            spd: Number(row.Speed || row.spd || row.Speed || 0),
             skillPower: Number(row.skillPower || row.SkillPower || 0),
             roles: row.Race ? String(row.Race).split('|').map(r => isNaN(r) ? r.trim() : Number(r)) : (row.roles ? String(row.roles).split('|').map(r => isNaN(r) ? r.trim() : Number(r)) : []),
             armyTag: Number(row.ArmyTag || row.armyTag || 1),
@@ -133,23 +192,53 @@ const UnitLibrary = ({ state, dispatch }) => {
   };
 
   const exportToExcel = (unitsData) => {
-    const exportData = unitsData.map(u => ({
-      Id: u.id,
-      ArmyTag: u.armyTag || 0,
-      Power: calculatePowerScore(u),
-      Hp: u.hp,
-      Attack: u.atk,
-      AtkSpeed: u.atkSpeed || 1.0,
-      AtkRange: u.atkRange || 100,
-      DetRange: u.detRange || 200,
-      Race: Array.isArray(u.roles) ? u.roles.join('|') : u.roles,
-      Note: u.name
-    }));
+    if (!tableHeaders || !default1001) {
+      alert('正在加载 ArmyTable 模板，请稍后再试...');
+      return;
+    }
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
+    // 构建 AOA (Array of Arrays) 数据，首先放入前 4 行模板
+    const aoaData = [...templateRows];
+
+    // 确定表头中排除字段的索引，以便后续生成行数据时保持对齐
+    const excludedFields = ['Bullet', 'Prefab'];
+    const activeHeaders = tableHeaders.map(h => excludedFields.includes(h) ? null : h);
+
+    // 处理兵种数据
+    unitsData.forEach((u, idx) => {
+      const baseMap = {
+        '#': idx + 1,
+        'Id': u.id,
+        'Note': u.name,
+        'Name': u.name,
+        'ArmyTag': u.armyTag || 0,
+        'Hp': u.hp,
+        'Attack': u.atk,
+        'HpFake': u.hp,
+        'AttackFake': u.atk,
+        'AttackFreq': u.atkSpeed || 1.0,
+        'Speed': u.spd || 75,
+        'AttackRange': u.atkRange || 100,
+        'FindRange': u.detRange || 200,
+        'Race': Array.isArray(u.roles) ? u.roles.join('|') : u.roles,
+        'Cost': Math.round(calculatePowerScore(u) / 100)
+      };
+
+      const mergedData = { ...default1001, ...baseMap };
+      
+      // 按照 tableHeaders 的顺序生成这一行的数据
+      const row = tableHeaders.map(h => {
+        if (excludedFields.includes(h)) return null; // 排除字段填 null
+        return mergedData[h] !== undefined ? mergedData[h] : '';
+      });
+      
+      aoaData.push(row);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoaData);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Units");
-    XLSX.writeFile(wb, 'units_export.xlsx');
+    XLSX.utils.book_append_sheet(wb, ws, "ArmyTable");
+    XLSX.writeFile(wb, 'ArmyTable_Sync_Export.xlsx');
   };
 
   return (

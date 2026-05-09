@@ -62,48 +62,7 @@ const MatrixGenerator = ({ matrixConfig, setMatrixConfig, roleWeights, derivatio
         </div>
 
         <button className="btn-primary" style={{ height: '50px', fontSize: '1rem' }} onClick={() => {
-          const totalTypes = Math.ceil(matrixConfig.totalLevels / matrixConfig.updateFrequency);
-          const newUnits = [];
-
-          Object.keys(matrixConfig.roleDistribution).forEach(roleId => {
-            const role = Number(roleId);
-            const count = Math.round(totalTypes * matrixConfig.roleDistribution[roleId]);
-            const weights = roleWeights[role];
-
-            for (let i = 0; i < count; i++) {
-              const tier = Math.min(4, Math.ceil((i + 1) / (count / 4)));
-              const tierMultiplier = 1 + (tier - 1) * 0.5;
-
-              const isBoss = (i + 1) % matrixConfig.bossFrequency === 0;
-              const bossMultiplier = isBoss ? 4.0 : 1.0;
-              const bossAtkMultiplier = isBoss ? 1.5 : 1.0;
-
-              const hpMut = 1 + (Math.random() * 2 - 1) * matrixConfig.randomness;
-              const atkMut = 1 + (Math.random() * 2 - 1) * matrixConfig.randomness;
-
-              const pool = ROLE_NAME_POOLS[role] || ['未知单位'];
-              const baseName = pool[Math.floor(Math.random() * pool.length)];
-              const bossPrefix = isBoss ? BOSS_PREFIXES[Math.floor(Math.random() * BOSS_PREFIXES.length)] : '';
-              const symbol = ROLE_SYMBOLS[role] || '';
-
-              const finalId = getNextIdForRole(isBoss ? 'Boss' : role, [], [...newUnits]);
-
-              newUnits.push({
-                id: finalId,
-                name: `${bossPrefix}${baseName}${symbol} T${tier}`,
-                hp: Math.round(derivationParams.baseHp * weights.hp * tierMultiplier * hpMut * bossMultiplier),
-                atk: Math.round(derivationParams.baseAtk * weights.atk * tierMultiplier * atkMut * bossAtkMultiplier),
-                atkSpeed: Number((weights.atkSpeed * (0.9 + Math.random() * 0.2)).toFixed(2)),
-                atkRange: Math.round(weights.atkRange * (0.9 + Math.random() * 0.2)),
-                detRange: Math.round(weights.detRange * (0.9 + Math.random() * 0.2)),
-                spd: derivationParams.baseSpd + Math.floor(Math.random() * 5),
-                skillPower: Math.round(weights.cc * 100 + (tier - 1) * 20 + (isBoss ? 50 : 0)),
-                roles: [role],
-                armyTag: isBoss ? 9 : tier,
-                spawnWeight: isBoss ? 10 : 50
-              });
-            }
-          });
+          const newUnits = generateMatrixUnits(matrixConfig, roleWeights, derivationParams, state.units);
 
           if (confirm(`系统即将生成 ${newUnits.length} 个兵种并加入库中，是否继续？`)) {
             dispatch({ type: 'IMPORT_UNITS', payload: newUnits });

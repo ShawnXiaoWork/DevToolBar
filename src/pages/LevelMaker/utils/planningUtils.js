@@ -73,3 +73,64 @@ export const getTargetTier = (level) => {
   if (level <= 80) return 'T3';
   return 'T4';
 };
+
+/**
+ * 核心：矩阵生成算法 (封装版)
+ */
+export const generateMatrixUnits = (config, roleWeights, derivationParams, existingUnits = []) => {
+  const { totalLevels, updateFrequency, randomness, roleDistribution, bossFrequency } = config;
+  const totalTypes = Math.ceil(totalLevels / updateFrequency);
+  const newUnits = [];
+
+  const ROLE_LABELS = { 0: 'Tank', 1: 'Warrior', 2: 'DPS', 3: 'CC' };
+  const ROLE_SYMBOLS = { 0: '🛡️', 1: '⚔️', 2: '🎯', 3: '🌀' };
+  const BOSS_PREFIXES = ['【极秘项目】', '【变异主宰】', '【钢铁暴君】', '【末日先兆】', '【零号病毒】', '【虚空母体】'];
+  const ROLE_NAME_POOLS = {
+    0: ['石像鬼', '巨盾兵', '山岭巨人', '圣骑士', '憎恶', '铁甲蛹', '岩石怪', '禁卫', '守望者', '龙龟'],
+    1: ['剑士', '狂战士', '恶魔猎手', '骷髅兵', '影舞者', '先遣兵', '处刑人', '狼人', '武士', '角斗士'],
+    2: ['希尔瓦娜斯', '寒冰射手', '狙击手', '火枪手', '巫妖', '法术大师', '游侠', '投石车', '暗影牧师', '元素使'],
+    3: ['寒冰法师', '术士', '德鲁伊', '蜘蛛女王', '萨满', '催眠者', '粘液怪', '沉默者', '药剂师', '先知']
+  };
+
+  Object.keys(roleDistribution).forEach(roleId => {
+    const role = Number(roleId);
+    const count = Math.round(totalTypes * roleDistribution[roleId]);
+    const weights = roleWeights[role];
+
+    for (let i = 0; i < count; i++) {
+      const tier = Math.min(4, Math.ceil((i + 1) / (count / 4)));
+      const tierMultiplier = 1 + (tier - 1) * 0.5;
+
+      const isBoss = (i + 1) % bossFrequency === 0;
+      const bossMultiplier = isBoss ? 4.0 : 1.0;
+      const bossAtkMultiplier = isBoss ? 1.5 : 1.0;
+
+      const hpMut = 1 + (Math.random() * 2 - 1) * randomness;
+      const atkMut = 1 + (Math.random() * 2 - 1) * randomness;
+
+      const pool = ROLE_NAME_POOLS[role] || ['未知单位'];
+      const baseName = pool[Math.floor(Math.random() * pool.length)];
+      const bossPrefix = isBoss ? BOSS_PREFIXES[Math.floor(Math.random() * BOSS_PREFIXES.length)] : '';
+      const symbol = ROLE_SYMBOLS[role] || '';
+
+      const finalId = getNextIdForRole(isBoss ? 'Boss' : role, existingUnits, newUnits);
+
+      newUnits.push({
+        id: finalId,
+        name: `${bossPrefix}${baseName}${symbol} T${tier}`,
+        hp: Math.round(derivationParams.baseHp * weights.hp * tierMultiplier * hpMut * bossMultiplier),
+        atk: Math.round(derivationParams.baseAtk * weights.atk * tierMultiplier * atkMut * bossAtkMultiplier),
+        atkSpeed: Number((weights.atkSpeed * (0.9 + Math.random() * 0.2)).toFixed(2)),
+        atkRange: Math.round(weights.atkRange * (0.9 + Math.random() * 0.2)),
+        detRange: Math.round(weights.detRange * (0.9 + Math.random() * 0.2)),
+        spd: derivationParams.baseSpd + Math.floor(Math.random() * 5),
+        skillPower: Math.round(weights.cc * 100 + (tier - 1) * 20 + (isBoss ? 50 : 0)),
+        roles: [role],
+        armyTag: isBoss ? 9 : tier,
+        spawnWeight: isBoss ? 10 : 50
+      });
+    }
+  });
+
+  return newUnits;
+};

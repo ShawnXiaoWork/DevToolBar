@@ -104,34 +104,29 @@ const initialState = {
     }
   ],
   // 兵种库 (游戏制作辅助)
-  units: [
-    {
-      id: '10001',
-      name: '近战士兵',
-      hp: 100, atk: 15, spd: 10, skillPower: 0,
-      atkSpeed: 1.0, atkRange: 100, detRange: 200,
-      roles: [0],
-      armyTag: 1,
-      spawnWeight: 50
-    },
-    {
-      id: '30001',
-      name: '精英弓箭手',
-      hp: 60, atk: 25, spd: 15, skillPower: 10,
-      atkSpeed: 2.0, atkRange: 600, detRange: 700,
-      roles: [2],
-      armyTag: 1,
-      spawnWeight: 20
-    }
-  ],
+  units: [],
   // 关卡平衡配置
   levelConfig: {
     baseScore: 100,
     difficultyFactor: 1.2,
-    spikes: [
-      { level: 10, hpMultiplier: 1.2, atkMultiplier: 1.3, type: 'peak', note: '小 Boss' },
-      { level: 20, hpMultiplier: 1.5, atkMultiplier: 1.5, type: 'peak', note: '大 Boss' }
-    ]
+    spikes: Array.from({ length: 20 }, (_, i) => {
+      const level = (i + 1) * 10;
+      const chapter = i + 1;
+      const isMajorChapter = chapter % 5 === 0;
+      return {
+        level,
+        hpMultiplier: isMajorChapter ? 1.4 : 1.2,
+        atkMultiplier: isMajorChapter ? 1.6 : 1.3,
+        type: 'peak',
+        note: isMajorChapter ? `第 ${chapter / 5} 章节终极 Boss` : `第 ${chapter} 阶段精英战`
+      };
+    }).concat(Array.from({ length: 20 }, (_, i) => ({
+      level: (i + 1) * 10,
+      hpMultiplier: 1.1,
+      atkMultiplier: 1.1,
+      type: 'step',
+      note: `第 ${i + 1} 章节难度台阶`
+    })))
   }
 };
 

@@ -18,14 +18,15 @@ import LevelAnalysis from './components/LevelAnalysis';
 
 // 自定义 Hooks
 import { useLevelPlanning } from './hooks/useLevelPlanning';
+import { generateMatrixUnits } from './utils/planningUtils';
 
 const LevelMaker = () => {
   const { state, dispatch } = useGame();
   const [activeTab, setActiveTab] = useState('units'); 
   
-  // 状态下沉管理 (部分状态仍需提升至此处以便跨 Tab 共享)
+  // 状态下沉管理
   const [previewLevel, setPreviewLevel] = useState(1);
-  const [previewRange, setPreviewRange] = useState(20);
+  const [previewRange, setPreviewRange] = useState(200);
   
   const [roleWeights, setRoleWeights] = useState({
     0: { hp: 1.6, atk: 0.4, cc: 0, atkSpeed: 0.8, atkRange: 100, detRange: 200 },
@@ -52,7 +53,7 @@ const LevelMaker = () => {
   const [derivationParams, setDerivationParams] = useState({
     baseHp: 100,
     baseAtk: 10,
-    baseSpd: 0,
+    baseSpd: 75,
     baseSkillPower: 0,
     targetRole: 0,
     unitName: '衍生单位'
@@ -66,6 +67,14 @@ const LevelMaker = () => {
     bossFrequency: 5,
     minBossPerLevel: 2
   });
+
+  // 初始启动：如果兵种库为空，自动生成一版数据
+  React.useEffect(() => {
+    if (state.units.length === 0) {
+      const initialUnits = generateMatrixUnits(matrixConfig, roleWeights, derivationParams, []);
+      dispatch({ type: 'IMPORT_UNITS', payload: initialUnits });
+    }
+  }, []);
 
   // 使用自定义 Hook 进行核心计算
   const { fullLevelPlan, analysisResult } = useLevelPlanning(state, {
