@@ -72,7 +72,7 @@ const LevelMaker = () => {
   React.useEffect(() => {
     if (state.units.length === 0) {
       const initialUnits = generateMatrixUnits(matrixConfig, roleWeights, derivationParams, []);
-      dispatch({ type: 'IMPORT_UNITS', payload: initialUnits });
+      dispatch({ type: 'IMPORT_UNITS', payload: initialUnits, replace: true });
     }
   }, []);
 

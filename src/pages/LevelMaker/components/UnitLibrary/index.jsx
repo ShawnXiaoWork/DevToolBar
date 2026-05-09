@@ -13,6 +13,8 @@ const UnitLibrary = ({ state, dispatch }) => {
   const [default1001, setDefault1001] = useState(null);
   const [tableHeaders, setTableHeaders] = useState(null);
   const [templateRows, setTemplateRows] = useState([]);
+  const [fullTableData, setFullTableData] = useState([]);
+  const [currentWorkbook, setCurrentWorkbook] = useState(null);
 
   // 加载 1001 参考数据及表头模板
   React.useEffect(() => {
@@ -31,12 +33,22 @@ const UnitLibrary = ({ state, dispatch }) => {
       'FatherHpRate': 0, 'FatherAttackRate': 0, 'Stability': 1
     };
 
-    fetch('/ArmyTable.xlsx')
-      .then(res => res.arraybuffer())
+    fetch(`${import.meta.env.BASE_URL}ArmyTable.xlsx`)
+      .then(res => {
+        if (!res.ok) throw new Error('File not found');
+        return res.arrayBuffer();
+      })
       .then(buffer => {
-        const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+        const workbook = XLSX.read(new Uint8Array(buffer), { 
+          type: 'array',
+          cellStyles: true,
+          cellNF: true,
+          cellComments: true
+        });
+        setCurrentWorkbook(workbook);
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        setFullTableData(jsonData);
         
         // 保存前 4 行模板 (注释、表头、类型、描述)
         const templates = jsonData.slice(0, 4);
@@ -47,14 +59,12 @@ const UnitLibrary = ({ state, dispatch }) => {
 
         const idIdx = headers.indexOf('Id');
         const row1001 = jsonData.find(r => r[idIdx] == 1001 || r[idIdx] === '1001');
-        
+
         if (row1001) {
           const data = {};
           headers.forEach((h, i) => {
             if (h) data[h] = row1001[i];
           });
-          delete data.Bullet;
-          delete data.Prefab;
           setDefault1001(data);
         } else {
           console.warn('ID 1001 not found in ArmyTable, using fallback.');
@@ -206,32 +216,37 @@ const UnitLibrary = ({ state, dispatch }) => {
 
     // 处理兵种数据
     unitsData.forEach((u, idx) => {
+      const score = calculatePowerScore(u);
       const baseMap = {
         '#': idx + 1,
         'Id': u.id,
         'Note': u.name,
-        'Name': u.name,
+        'Name': `armyName.${u.id}`,
+        'Description': `armyDescription.${u.id}`,
         'ArmyTag': u.armyTag || 0,
         'Hp': u.hp,
-        'Attack': u.atk,
         'HpFake': u.hp,
+        'Attack': u.atk,
         'AttackFake': u.atk,
         'AttackFreq': u.atkSpeed || 1.0,
         'Speed': u.spd || 75,
         'AttackRange': u.atkRange || 100,
         'FindRange': u.detRange || 200,
         'Race': Array.isArray(u.roles) ? u.roles.join('|') : u.roles,
-        'Cost': Math.round(calculatePowerScore(u) / 100)
+        'Icon': `m${u.id}`,
+        'Prefab': `Arm${u.id}`,
+        'Cost': score
       };
 
       const mergedData = { ...default1001, ...baseMap };
-      
+
       // 按照 tableHeaders 的顺序生成这一行的数据
       const row = tableHeaders.map(h => {
-        if (excludedFields.includes(h)) return null; // 排除字段填 null
+        // 如果 baseMap 中有该字段，使用 baseMap 的值（已覆盖模板）
+        // 如果没有，使用模板中的原始值
         return mergedData[h] !== undefined ? mergedData[h] : '';
       });
-      
+
       aoaData.push(row);
     });
 
@@ -239,6 +254,128 @@ const UnitLibrary = ({ state, dispatch }) => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "ArmyTable");
     XLSX.writeFile(wb, 'ArmyTable_Sync_Export.xlsx');
+  };
+
+  const syncToLocal = async () => {
+    if (!currentWorkbook || !tableHeaders) {
+      alert('数据未加载完成，请稍后');
+      return;
+    }
+
+    // 浅拷贝 workbook 及其 Sheet
+    const wb = { ...currentWorkbook };
+    const sheetName = wb.SheetNames[0];
+    const sheet = { ...wb.Sheets[sheetName] };
+    wb.Sheets[sheetName] = sheet;
+
+    const headers = tableHeaders;
+    const idIdx = headers.indexOf('Id');
+    if (idIdx === -1) return;
+
+    // 1. 建立 ID 到 行索引 的映射 (注意：XLSX 索引从 0 开始)
+    const idToRowMap = new Map();
+    const range = XLSX.utils.decode_range(sheet['!ref']);
+    for (let r = 4; r <= range.e.r; r++) {
+      const cell = sheet[XLSX.utils.encode_cell({ c: idIdx, r: r })];
+      if (cell && cell.v !== undefined) {
+        idToRowMap.set(String(cell.v), r);
+      }
+    }
+
+    // 2. 找到 1001 模板行索引
+    let template1001RowIdx = -1;
+    for (let r = 4; r <= range.e.r; r++) {
+      const cell = sheet[XLSX.utils.encode_cell({ c: idIdx, r: r })];
+      if (cell && (cell.v == 1001 || cell.v === '1001')) {
+        template1001RowIdx = r;
+        break;
+      }
+    }
+
+    let nextAvailableRow = range.e.r + 1;
+
+    // 3. 遍历兵种库进行增量更新
+    filteredUnits.forEach(u => {
+      const score = calculatePowerScore(u);
+      let targetRowIdx = idToRowMap.get(String(u.id));
+      
+      // 如果是新兵种，克隆 1001 模板行
+      if (targetRowIdx === undefined) {
+        targetRowIdx = nextAvailableRow++;
+        if (template1001RowIdx !== -1) {
+          for (let c = 0; c <= range.e.c; c++) {
+            const fromAddr = XLSX.utils.encode_cell({ c, r: template1001RowIdx });
+            const toAddr = XLSX.utils.encode_cell({ c, r: targetRowIdx });
+            if (sheet[fromAddr]) {
+              sheet[toAddr] = { ...sheet[fromAddr] }; // 拷贝包括样式、批注在内的所有属性
+            }
+          }
+        }
+      }
+
+      // 定义映射关系
+      const mapping = {
+        'Id': u.id,
+        'Note': u.name,
+        'Name': `armyName.${u.id}`,
+        'Description': `armyDescription.${u.id}`,
+        'ArmyTag': u.armyTag || 0,
+        'Hp': u.hp,
+        'HpFake': u.hp,
+        'Attack': u.atk,
+        'AttackFake': u.atk,
+        'AttackFreq': u.atkSpeed || 1.0,
+        'Speed': u.spd || 75,
+        'AttackRange': u.atkRange || 100,
+        'FindRange': u.detRange || 200,
+        'Race': Array.isArray(u.roles) ? u.roles.join('|') : u.roles,
+        'Icon': `m${u.id}`,
+        'Prefab': `Arm${u.id}`,
+        'Cost': score
+      };
+
+      // 覆盖对应列的值 (.v)
+      headers.forEach((h, i) => {
+        if (mapping[h] !== undefined) {
+          const addr = XLSX.utils.encode_cell({ c: i, r: targetRowIdx });
+          const val = mapping[h];
+          if (!sheet[addr]) {
+            sheet[addr] = { v: val, t: typeof val === 'number' ? 'n' : 's' };
+          } else {
+            sheet[addr].v = val;
+            sheet[addr].t = typeof val === 'number' ? 'n' : 's';
+          }
+        }
+      });
+    });
+
+    // 更新表格范围
+    range.e.r = nextAvailableRow - 1;
+    sheet['!ref'] = XLSX.utils.encode_range(range);
+
+    // 4. 生成二进制并同步
+    try {
+      // 注意：社区版 XLSX 可能在写入时丢失部分复杂样式，但直接操作 cell.v 能最大限度保留原始信息
+      const content = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+      
+      const response = await fetch(`${import.meta.env.BASE_URL}api/save-excel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content })
+      });
+
+      if (response.ok) {
+        alert('本地 ArmyTable.xlsx 同步成功（已尝试保留格式）！');
+        // 更新本地状态，以便后续操作
+        setCurrentWorkbook(wb);
+        setFullTableData(XLSX.utils.sheet_to_json(sheet, { header: 1 }));
+      } else {
+        throw new Error('Server returned error');
+      }
+    } catch (err) {
+      console.error('Sync failed:', err);
+      alert('同步失败，请确保 npm run dev 正在运行。');
+    }
   };
 
   return (
@@ -264,6 +401,9 @@ const UnitLibrary = ({ state, dispatch }) => {
           <button className="btn-outline" onClick={() => exportToExcel(filteredUnits)}>
             <Download size={16} /> 导出至 Excel
           </button>
+          <button className="btn-primary" style={{ background: '#4CAF50' }} onClick={syncToLocal}>
+            <Users size={16} /> 同步至本地文件
+          </button>
           <button className="btn-outline" style={{ color: '#FF5252', borderColor: 'rgba(255,82,82,0.3)' }} onClick={() => {
             if (confirm('确认重置兵种库到初始状态？')) {
               dispatch({ type: 'RESET_UNITS' });
@@ -278,20 +418,20 @@ const UnitLibrary = ({ state, dispatch }) => {
       </div>
 
       <UnitFilters unitFilter={unitFilter} setUnitFilter={setUnitFilter} allRoles={allRoles} />
-      
-      <UnitTable 
-        units={filteredUnits} 
-        unitFilter={unitFilter} 
-        toggleSort={toggleSort} 
-        onEdit={setEditingUnit} 
-        onDelete={(id) => dispatch({ type: 'DELETE_UNIT', payload: id })} 
+
+      <UnitTable
+        units={filteredUnits}
+        unitFilter={unitFilter}
+        toggleSort={toggleSort}
+        onEdit={setEditingUnit}
+        onDelete={(id) => dispatch({ type: 'DELETE_UNIT', payload: id })}
       />
 
       {editingUnit && (
-        <UnitEditor 
-          unit={editingUnit} 
-          onSave={handleSaveUnit} 
-          onCancel={() => setEditingUnit(null)} 
+        <UnitEditor
+          unit={editingUnit}
+          onSave={handleSaveUnit}
+          onCancel={() => setEditingUnit(null)}
         />
       )}
     </motion.div>

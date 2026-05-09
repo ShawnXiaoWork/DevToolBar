@@ -224,9 +224,15 @@ function gameReducer(state, action) {
         units: state.units.filter(u => u.id !== action.payload)
       };
     case 'IMPORT_UNITS':
+      if (action.replace) {
+        return { ...state, units: action.payload };
+      }
+      // 去重逻辑：按 ID 过滤掉已存在的单位
+      const existingIds = new Set(state.units.map(u => u.id));
+      const newUniqueUnits = action.payload.filter(u => !existingIds.has(u.id));
       return {
         ...state,
-        units: action.replace ? action.payload : [...state.units, ...action.payload]
+        units: [...state.units, ...newUniqueUnits]
       };
     case 'RESET_UNITS':
       return {
