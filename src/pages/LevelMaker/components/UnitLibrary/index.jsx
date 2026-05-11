@@ -20,23 +20,28 @@ const UnitLibrary = ({ state, dispatch }) => {
   React.useEffect(() => {
     // 静态兜底数据 (万一 fetch 失败或 ID 找不到)
     const STATIC_FALLBACK_1001 = {
-      '#': '', 'Id': 1001, 'Note': '剑士', 'ArmyTag': 0, 'Cost': 0, 'SpawnRates': 0.4, 'ArenaCount': 1,
+      '#': '', 'Id': 1001, 'Note': '剑士', 'ArmyTag': 11, 'Cost': 0, 'SpawnRates': 0.4, 'ArenaCount': 1,
       'Hp': 1000, 'Attack': 200, 'HpFake': 900, 'AttackFake': 180, 'AttackFreq': 1,
       'HPGrow': "[[2,10],[20,15],[40,20],[60,25],[80,30],[100,35],[120,40],[140,45],[160,50],[180,55],[200,60]]",
       'AttackGrow': "[[2,2],[20,3],[40,4],[60,5],[80,6],[100,7],[120,8],[140,9],[160,10],[180,11],[200,12]]",
       'Speed': 75, 'AttackRange': 84, 'FindRange': 300, 'Aim': 1, 'Style': 0, 'Race': 1,
-      'FeaturesOther': "[2]", 'MaxRow': 15, 'Bullet': 0, 'Icon': "m1001", 'Prefab': "Arm1001",
+      'FeaturesOther': "[2]", 'MaxRow': 15, 'Bullet': 0, 'Icon': "m1001", 'Prefab': 10001,
       'Name': "armyName.1001", 'Description': "armyDescription.1001",
       'DieSfx': "[101,102,103,104,105,106,107,108,109]", 'RecruitingSfx': "[1002]",
       'Skill0Sfx': "[21,22,23,24,25,26,27,28]", 'Skill1Sfx': "[-1]",
+      'CommonSkill': 10010,
       'Resistance': "[0.1,0.1,0,0,0,0]", 'BuffResistance': "[0,0,0,0]",
       'FatherHpRate': 0, 'FatherAttackRate': 0, 'Stability': 1
     };
 
-    fetch(`${import.meta.env.BASE_URL}ArmyTable.xlsx`)
+    fetch(`${import.meta.env.BASE_URL}api/read-excel?filename=ArmyTable.xlsx`)
       .then(res => {
-        if (!res.ok) throw new Error('File not found');
+        if (!res.ok) throw new Error('API Load failed');
         return res.arrayBuffer();
+      })
+      .catch(() => {
+        // Fallback to static public file if API fails
+        return fetch(`${import.meta.env.BASE_URL}ArmyTable.xlsx`).then(res => res.arrayBuffer());
       })
       .then(buffer => {
         const workbook = XLSX.read(new Uint8Array(buffer), { 
@@ -69,6 +74,43 @@ const UnitLibrary = ({ state, dispatch }) => {
         } else {
           console.warn('ID 1001 not found in ArmyTable, using fallback.');
           setDefault1001(STATIC_FALLBACK_1001);
+        }
+
+        // 如果当前 state 为空，尝试从导入的数据中恢复 state
+        if (state.units.length === 0) {
+          const objects = XLSX.utils.sheet_to_json(sheet);
+          const units = objects.map(row => {
+            const skillVal = row.SkillIds || row.CommonSkill || row.UnlockSkillOrigin || '';
+            let commonSkill = 10010;
+            if (typeof skillVal === 'string' && skillVal.startsWith('[') && skillVal.endsWith(']')) {
+              try {
+                const arr = JSON.parse(skillVal);
+                if (Array.isArray(arr) && arr.length > 0) commonSkill = Number(arr[0]);
+              } catch(e) {}
+            } else if (!isNaN(skillVal) && skillVal !== '') {
+              commonSkill = Number(skillVal);
+            }
+
+            return {
+              id: row.Id || row.id,
+              name: row.Name || row.name || row.Note,
+              hp: Number(row.Hp || 0),
+              atk: Number(row.Attack || 0),
+              atkSpeed: Number(row.AttackFreq || 1.0),
+              atkRange: Number(row.AttackRange || 100),
+              detRange: Number(row.FindRange || 200),
+              spd: Number(row.Speed || 75),
+              roles: row.Race ? String(row.Race).split('|').map(r => isNaN(r) ? r.trim() : Number(r)) : [],
+              armyTag: Number(row.ArmyTag || 11),
+              commonSkill: commonSkill,
+              maxRow: Number(row.MaxRow || 15),
+              spawnRates: Number(row.SpawnRates || 0.4)
+            };
+          }).filter(u => u.id && u.name);
+          
+          if (units.length > 0) {
+            dispatch({ type: 'IMPORT_UNITS', payload: units });
+          }
         }
       }).catch(err => {
         console.error('Failed to load ArmyTable for defaults:', err);
@@ -147,6 +189,7 @@ const UnitLibrary = ({ state, dispatch }) => {
         return isNaN(trimmed) ? trimmed : Number(trimmed);
       }),
       armyTag: Number(formData.get('armyTag') || 1),
+      commonSkill: Number(formData.get('commonSkill') || 10010),
       spawnWeight: Number(formData.get('spawnWeight'))
     };
 
@@ -173,20 +216,35 @@ const UnitLibrary = ({ state, dispatch }) => {
           const worksheet = workbook.Sheets[firstSheetName];
           const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-          importedUnits = jsonData.map(row => ({
-            id: row.Id || row.id || `unit_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-            name: row.Name || row.name || row.Note || '未命名',
-            hp: Number(row.Hp || row.hp || row.HP || 0),
-            atk: Number(row.Attack || row.atk || row.Attack || 0),
-            atkSpeed: Number(row.AttackFreq || row.atkSpeed || row.ASP || 1.0),
-            atkRange: Number(row.AttackRange || row.atkRange || row.ARNG || 100),
-            detRange: Number(row.FindRange || row.detRange || row.DRNG || 200),
-            spd: Number(row.Speed || row.spd || row.Speed || 0),
-            skillPower: Number(row.skillPower || row.SkillPower || 0),
-            roles: row.Race ? String(row.Race).split('|').map(r => isNaN(r) ? r.trim() : Number(r)) : (row.roles ? String(row.roles).split('|').map(r => isNaN(r) ? r.trim() : Number(r)) : []),
-            armyTag: Number(row.ArmyTag || row.armyTag || 1),
-            spawnWeight: Number(row.spawnWeight || row.SpawnWeight || 50)
-          })).filter(u => u.name !== '未命名' && (u.hp > 0 || u.atk > 0));
+          importedUnits = jsonData.map(row => {
+            // 解析 SkillIds，可能是 "[10010]" 或 "10010" 或 []
+            let skillVal = row.SkillIds || row.CommonSkill || row.commonSkill || row.UnlockSkillOrigin || '';
+            let commonSkill = 10010;
+            if (typeof skillVal === 'string' && skillVal.startsWith('[') && skillVal.endsWith(']')) {
+              try {
+                const arr = JSON.parse(skillVal);
+                if (Array.isArray(arr) && arr.length > 0) commonSkill = Number(arr[0]);
+              } catch(e) {}
+            } else if (!isNaN(skillVal) && skillVal !== '') {
+              commonSkill = Number(skillVal);
+            }
+
+            return {
+              id: row.Id || row.id || `unit_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              name: row.Name || row.name || row.Note || '未命名',
+              hp: Number(row.Hp || row.hp || row.HP || 0),
+              atk: Number(row.Attack || row.atk || row.Attack || 0),
+              atkSpeed: Number(row.AttackFreq || row.atkSpeed || row.ASP || 1.0),
+              atkRange: Number(row.AttackRange || row.atkRange || row.ARNG || 100),
+              detRange: Number(row.FindRange || row.detRange || row.DRNG || 200),
+              spd: Number(row.Speed || row.spd || row.Speed || 0),
+              skillPower: Number(row.skillPower || row.SkillPower || 0),
+              roles: row.Race ? String(row.Race).split('|').map(r => isNaN(r) ? r.trim() : Number(r)) : (row.roles ? String(row.roles).split('|').map(r => isNaN(r) ? r.trim() : Number(r)) : []),
+              armyTag: Number(row.ArmyTag || row.armyTag || 11),
+              commonSkill: commonSkill,
+              spawnWeight: Number(row.spawnWeight || row.SpawnWeight || 50)
+            };
+          }).filter(u => u.name !== '未命名' && (u.hp > 0 || u.atk > 0));
         }
 
         if (importedUnits.length > 0) {
@@ -210,10 +268,6 @@ const UnitLibrary = ({ state, dispatch }) => {
     // 构建 AOA (Array of Arrays) 数据，首先放入前 4 行模板
     const aoaData = [...templateRows];
 
-    // 确定表头中排除字段的索引，以便后续生成行数据时保持对齐
-    const excludedFields = ['Bullet', 'Prefab'];
-    const activeHeaders = tableHeaders.map(h => excludedFields.includes(h) ? null : h);
-
     // 处理兵种数据
     unitsData.forEach((u, idx) => {
       const score = calculatePowerScore(u);
@@ -234,7 +288,8 @@ const UnitLibrary = ({ state, dispatch }) => {
         'FindRange': u.detRange || 200,
         'Race': Array.isArray(u.roles) ? u.roles.join('|') : u.roles,
         'Icon': `m${u.id}`,
-        'Prefab': `Arm${u.id}`,
+        'Prefab': u.prefab || 10001,
+        'SkillIds': `[${u.commonSkill || 10010}]`,
         'Cost': score
       };
 
@@ -242,8 +297,6 @@ const UnitLibrary = ({ state, dispatch }) => {
 
       // 按照 tableHeaders 的顺序生成这一行的数据
       const row = tableHeaders.map(h => {
-        // 如果 baseMap 中有该字段，使用 baseMap 的值（已覆盖模板）
-        // 如果没有，使用模板中的原始值
         return mergedData[h] !== undefined ? mergedData[h] : '';
       });
 
@@ -330,7 +383,8 @@ const UnitLibrary = ({ state, dispatch }) => {
         'FindRange': u.detRange || 200,
         'Race': Array.isArray(u.roles) ? u.roles.join('|') : u.roles,
         'Icon': `m${u.id}`,
-        'Prefab': `Arm${u.id}`,
+        'Prefab': u.prefab || 10001,
+        'SkillIds': `[${u.commonSkill || 10010}]`,
         'Cost': score
       };
 
@@ -365,7 +419,8 @@ const UnitLibrary = ({ state, dispatch }) => {
       });
 
       if (response.ok) {
-        alert('本地 ArmyTable.xlsx 同步成功（已尝试保留格式）！');
+        const result = await response.json();
+        alert(result.message || '本地 ArmyTable.xlsx 同步成功！');
         // 更新本地状态，以便后续操作
         setCurrentWorkbook(wb);
         setFullTableData(XLSX.utils.sheet_to_json(sheet, { header: 1 }));

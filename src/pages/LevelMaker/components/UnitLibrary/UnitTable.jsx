@@ -14,7 +14,7 @@ const UnitTable = ({ units, unitFilter, toggleSort, onEdit, onDelete }) => {
     }}>
       <div className="table-header" style={{
         display: 'grid',
-        gridTemplateColumns: '100px 150px 80px 70px 70px 60px 60px 60px 60px 80px 1fr 70px 80px',
+        gridTemplateColumns: '100px 150px 80px 70px 70px 60px 60px 60px 60px 80px 80px 1fr 70px 80px',
         padding: '14px 20px',
         background: 'rgba(255,255,255,0.05)',
         fontWeight: '600',
@@ -34,6 +34,7 @@ const UnitTable = ({ units, unitFilter, toggleSort, onEdit, onDelete }) => {
         <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('detRange')}>DRNG {unitFilter.sortBy === 'detRange' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
         <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('spd')}>SPD {unitFilter.sortBy === 'spd' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
         <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('score')}>评分 {unitFilter.sortBy === 'score' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
+        <span>SKILL</span>
         <span>职能标签</span>
         <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('weight')}>权重 {unitFilter.sortBy === 'weight' && (unitFilter.sortDir === 'asc' ? '↑' : '↓')}</span>
         <span style={{ textAlign: 'right' }}>管理</span>
@@ -47,7 +48,7 @@ const UnitTable = ({ units, unitFilter, toggleSort, onEdit, onDelete }) => {
         {units.map(unit => (
           <div key={unit.id} className="table-row" style={{
             display: 'grid',
-            gridTemplateColumns: '100px 150px 80px 70px 70px 60px 60px 60px 60px 80px 1fr 70px 80px',
+            gridTemplateColumns: '100px 150px 80px 70px 70px 60px 60px 60px 60px 80px 80px 1fr 70px 80px',
             padding: '12px 20px',
             alignItems: 'center',
             fontSize: '0.85rem',
@@ -72,6 +73,7 @@ const UnitTable = ({ units, unitFilter, toggleSort, onEdit, onDelete }) => {
             <span style={{ color: '#64B5F6' }}>{unit.detRange || 200}</span>
             <span style={{ color: '#00E5FF' }}>{unit.spd}</span>
             <span style={{ fontWeight: '800', color: 'var(--accent-primary)' }}>{calculatePowerScore(unit)}</span>
+            <span style={{ fontSize: '0.8rem', color: '#B39DDB', fontFamily: 'monospace' }}>{unit.commonSkill || '-'}</span>
             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
               {unit.roles.map(role => (
                 <span key={role} className="tag" style={{

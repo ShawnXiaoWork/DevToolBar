@@ -3,6 +3,8 @@ import { motion } from 'framer-motion';
 import { Download, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import PlanRow from './PlanRow';
+import { syncAllLevelTables } from '../../utils/exportUtils';
+import { RefreshCw } from 'lucide-react';
 
 const DeploymentPlan = ({ fullLevelPlan, previewRange }) => {
   const exportToExcel = () => {
@@ -45,10 +47,13 @@ const DeploymentPlan = ({ fullLevelPlan, previewRange }) => {
           <p>基于当前难度曲线与兵种库，系统已自动计算并分配了前 {previewRange} 关的敌军阵容。</p>
         </div>
         <div className="plan-actions" style={{ display: 'flex', gap: '0.75rem' }}>
-          <button className="btn-outline" onClick={exportToExcel}>
-            <Download size={16} /> 导出全关卡规划 (Excel)
+          <button className="btn-primary" style={{ background: '#4CAF50' }} onClick={() => syncAllLevelTables(fullLevelPlan)}>
+            <RefreshCw size={16} /> 一键同步所有配置表 (Stage & Step)
           </button>
-          <button className="btn-primary" onClick={exportToJson}>
+          <button className="btn-outline" onClick={exportToExcel}>
+            <Download size={16} /> 导出汇总规划 (Excel)
+          </button>
+          <button className="btn-outline" onClick={exportToJson}>
             <Upload size={16} /> 导出配置 (JSON)
           </button>
         </div>

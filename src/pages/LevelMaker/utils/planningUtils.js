@@ -1,4 +1,4 @@
-import { ROLE_ID_RANGES } from './constants';
+import { ROLE_ID_RANGES, ROLE_COMMON_SKILLS } from './constants';
 
 /**
  * 计算单个兵种的综合战力评分 (Power Score)
@@ -125,8 +125,11 @@ export const generateMatrixUnits = (config, roleWeights, derivationParams, exist
         detRange: Math.round(weights.detRange * (0.9 + Math.random() * 0.2)),
         spd: derivationParams.baseSpd + Math.floor(Math.random() * 5),
         skillPower: Math.round(weights.cc * 100 + (tier - 1) * 20 + (isBoss ? 50 : 0)),
+        commonSkill: ROLE_COMMON_SKILLS[role] || 10010,
         roles: [role],
-        armyTag: isBoss ? 9 : tier,
+        armyTag: isBoss ? 20 : 11,
+        maxRow: isBoss ? 1 : 15,
+        spawnRates: isBoss ? 1.0 : 0.4,
         spawnWeight: isBoss ? 10 : 50
       });
     }

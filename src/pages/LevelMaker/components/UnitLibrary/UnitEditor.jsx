@@ -50,13 +50,19 @@ const UnitEditor = ({ unit, onSave, onCancel }) => {
               <input name="roles" defaultValue={unit?.roles?.join(', ') || '0'} required />
             </div>
             <div className="input-group">
-              <label>ArmyTag (1-4, 9)</label>
-              <input type="number" name="armyTag" defaultValue={unit?.armyTag || 1} required />
+              <label>ArmyTag (11: 小兵, 20: Boss)</label>
+              <input type="number" name="armyTag" defaultValue={unit?.armyTag || 11} required />
             </div>
           </div>
-          <div className="input-group">
-            <label>出现权重 (Spawn Weight)</label>
-            <input type="number" name="spawnWeight" defaultValue={unit?.spawnWeight || 50} required />
+          <div className="input-row">
+            <div className="input-group">
+              <label>出现权重 (Spawn Weight)</label>
+              <input type="number" name="spawnWeight" defaultValue={unit?.spawnWeight || 50} required />
+            </div>
+            <div className="input-group">
+              <label>普通攻击技能 ID</label>
+              <input type="number" name="commonSkill" defaultValue={unit?.commonSkill || 10010} required />
+            </div>
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onCancel}>取消</button>
