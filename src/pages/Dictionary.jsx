@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
 import Modal from './Modal';
 import ExcelImportPanel from '../components/ExcelImportPanel';
 import { downloadDictionaryTemplate, parseDictionaryExcel } from '../services/excelService';
-import { Package, Palette } from 'lucide-react';
+import { Package, Palette, RefreshCw, Save } from 'lucide-react';
+import { loadExcelWorkbook, syncDataToSheet, saveExcelWorkbook } from '../utils/excelSyncUtils';
 
 const Dictionary = () => {
   const { state, dispatch } = useGame();
@@ -11,6 +12,10 @@ const Dictionary = () => {
   const [modalType, setModalType] = useState('add');
   const [editingResId, setEditingResId] = useState(null);
   const [formData, setFormData] = useState({ name: '', diamondRate: 0 });
+
+  useEffect(() => {
+    loadFromLocal(true); // 静默加载
+  }, []);
 
   const handleBaseChange = (field, value) => {
     dispatch({ type: 'UPDATE_BASE_SETTINGS', payload: { [field]: value } });
@@ -33,17 +38,89 @@ const Dictionary = () => {
     dispatch({ type: 'DELETE_RESOURCE', payload: id });
   };
 
+  /** 基于金本位的自动定价算法 */
+  const calculateDefaultRate = (item) => {
+    const { economyRules } = state;
+    
+    // 1. 基础价值匹配 (按类型/子类型)
+    let baseValue = 1;
+    const itemTypeStr = String(item.type || '').toLowerCase();
+    const itemSubTypeStr = String(item.subType || '').toLowerCase();
+    
+    const typeRule = economyRules.itemTypes.find(t => 
+      itemTypeStr === t.id.toLowerCase() || 
+      itemTypeStr.includes(t.name) ||
+      itemSubTypeStr === t.id.toLowerCase() ||
+      itemSubTypeStr.includes(t.name)
+    );
+
+    if (typeRule) {
+      baseValue = typeRule.baseValue;
+    } else {
+      // 深度模糊匹配 (含常见英文名)
+      const str = `${item.name}|${itemTypeStr}|${itemSubTypeStr}`;
+      if (/装备|equip|weapon|armor/i.test(str)) baseValue = 100;
+      else if (/材料|material|item/i.test(str)) baseValue = 10;
+      else if (/碎片|chip|fragment/i.test(str)) baseValue = 5;
+      else if (/消耗|consumable/i.test(str)) baseValue = 2;
+    }
+
+    // 2. 品质系数匹配
+    let multiplier = 1;
+    const qStr = String(item.quality || '').toLowerCase();
+    
+    // 支持数字映射: 1=白色, 2=绿色, 3=蓝色, 4=紫色, 5=橙色
+    const qualityMap = { '1': 'white', '2': 'green', '3': 'blue', '4': 'purple', '5': 'orange' };
+    const mappedQuality = qualityMap[qStr] || qStr;
+
+    const qualityRule = economyRules.qualities.find(q => 
+      mappedQuality === q.id.toLowerCase() || 
+      mappedQuality.includes(q.name) ||
+      (item.name && item.name.includes(q.name))
+    );
+
+    if (qualityRule) {
+      multiplier = qualityRule.multiplier;
+    } else {
+      // 英文品质名兜底
+      if (/orange|legend|神话|传说|橙/i.test(qStr) || /橙/.test(item.name)) multiplier = 30;
+      else if (/purple|epic|史诗|紫/i.test(qStr) || /紫/.test(item.name)) multiplier = 10;
+      else if (/blue|rare|稀有|蓝/i.test(qStr) || /蓝/.test(item.name)) multiplier = 4;
+      else if (/green|common|优秀|绿/i.test(qStr) || /绿/.test(item.name)) multiplier = 2;
+    }
+
+    // 3. 特殊逻辑修正
+    let factor = 1.0;
+    const fullStr = `${item.name}|${itemTypeStr}|${itemSubTypeStr}`;
+    if (/资源|货币|金币|resource|gold|coin/i.test(fullStr)) {
+      factor = 0.1;
+    }
+
+    return Number((baseValue * multiplier * factor).toFixed(4));
+  };
+
   const handleSubmit = () => {
     if (!formData.name) return;
+    
+    // 如果是新增且汇率为0，尝试自动定价
+    let finalData = { ...formData };
+    if (modalType === 'add' && finalData.diamondRate === 0) {
+      finalData.diamondRate = calculateDefaultRate({
+        name: finalData.name,
+        type: finalData.type || 'material',
+        quality: finalData.quality || 'white'
+      });
+    }
+
     if (modalType === 'add') {
       dispatch({
         type: 'ADD_RESOURCE',
-        payload: { id: `res_${Date.now()}`, ...formData },
+        payload: { id: `res_${Date.now()}`, ...finalData },
       });
     } else {
       dispatch({
         type: 'UPDATE_RESOURCE',
-        payload: { id: editingResId, ...formData },
+        payload: { id: editingResId, ...finalData },
       });
     }
     setIsModalOpen(false);
@@ -59,6 +136,99 @@ const Dictionary = () => {
       }
     }
     return { count: resources.length, errors };
+  };
+
+  const syncToLocal = async () => {
+    try {
+      const { workbook, sheet, headers, range } = await loadExcelWorkbook('ItemTable.xlsx');
+      
+      // 动态映射：尝试匹配表头
+      const mapping = {};
+      const idHeader = headers.find(h => h && h.toLowerCase() === 'id') || headers[0];
+      const nameHeader = headers.find(h => h && h.toLowerCase() === 'name') || headers.find(h => h && h.includes('名'));
+      const noteHeader = headers.find(h => h && h.toLowerCase() === 'note');
+      const standardHeader = headers.find(h => h && (h.toLowerCase() === 'standard' || h.includes('率')));
+      const typeHeader = headers.find(h => h && h.toLowerCase() === 'type');
+      const subTypeHeader = headers.find(h => h && h.toLowerCase() === 'subtype');
+      const qualityHeader = headers.find(h => h && h.toLowerCase() === 'quality');
+
+      if (idHeader) mapping[idHeader] = 'id';
+      if (noteHeader) mapping[noteHeader] = 'name'; // Note 列作为资源名称
+      if (nameHeader) mapping[nameHeader] = 'langKey'; // Name 列作为多语言 Key
+      if (standardHeader) mapping[standardHeader] = 'diamondRate';
+      if (typeHeader) mapping[typeHeader] = 'type';
+      if (subTypeHeader) mapping[subTypeHeader] = 'subType';
+      if (qualityHeader) mapping[qualityHeader] = 'quality';
+
+      syncDataToSheet({
+        sheet,
+        headers,
+        dataToSync: state.resources,
+        range,
+        config: {
+          idField: 'id',
+          mapping: mapping,
+          templateId: state.resources[0]?.id || 1001 // 随便找一个作为模板，或者约定好的
+        }
+      });
+
+      const result = await saveExcelWorkbook(workbook, 'ItemTable.xlsx');
+      alert(result.message || '同步到 ItemTable.xlsx 成功！');
+    } catch (error) {
+      console.error('Sync failed:', error);
+      alert('同步失败：' + (error.message || '请检查 EXTERNAL_SYNC_PATH 或文件是否存在'));
+    }
+  };
+
+  const loadFromLocal = async (isAuto = false) => {
+    try {
+      const { fullData, headers } = await loadExcelWorkbook('ItemTable.xlsx');
+      const idIdx = headers.findIndex(h => h && h.toLowerCase() === 'id');
+      const nameIdx = headers.findIndex(h => h && h.toLowerCase() === 'name');
+      const noteIdx = headers.findIndex(h => h && h.toLowerCase() === 'note');
+      const rateIdx = headers.findIndex(h => h && (h.toLowerCase() === 'standard' || h.includes('率') || h.includes('价')));
+      const typeIdx = headers.findIndex(h => h && h.toLowerCase() === 'type');
+      const subTypeIdx = headers.findIndex(h => h && h.toLowerCase() === 'subtype');
+      const qualityIdx = headers.findIndex(h => h && h.toLowerCase() === 'quality');
+
+      const resources = fullData.slice(4).map((row, idx) => {
+        const id = row[idIdx];
+        if (id === undefined || id === null || id === '') return null;
+        
+        let rate = Number(row[rateIdx] || 0);
+        const item = {
+          id: String(id),
+          name: row[noteIdx] || row[nameIdx] || `未命名_${id}`, // 优先使用 Note 作为名称
+          langKey: row[nameIdx], // 保存 Name 列为 langKey
+          type: row[typeIdx],
+          subType: row[subTypeIdx],
+          quality: row[qualityIdx],
+          note: row[noteIdx]
+        };
+
+        // 如果比率为 0，执行自动定价算法
+        if (rate === 0) {
+          rate = calculateDefaultRate(item);
+        }
+
+        return {
+          ...item,
+          diamondRate: rate
+        };
+      }).filter(Boolean);
+
+      if (resources.length > 0) {
+        dispatch({ type: 'REPLACE_RESOURCES', payload: resources });
+        if (!isAuto) alert(`成功从本地加载 ${resources.length} 个资源项`);
+      } else {
+        if (!isAuto) alert('ItemTable.xlsx 中未找到有效数据（从第 5 行起开始解析）');
+      }
+    } catch (error) {
+      console.warn('Load from local failed (ItemTable.xlsx):', error);
+      if (!isAuto) {
+        alert('无法加载 ItemTable.xlsx。\n\n原因可能是：\n1. .env 中的 EXTERNAL_SYNC_PATH 路径不正确（当前可能指向了不存在的目录）。\n2. 该路径下缺少 ItemTable.xlsx 文件。\n3. 项目 public 目录下也缺少该文件作为兜底。');
+      }
+    }
   };
 
   return (
@@ -96,7 +266,15 @@ const Dictionary = () => {
       <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <h2 className="glow-text">资源字典与汇率</h2>
-          <button className="btn-primary" onClick={openAddModal}>+ 添加新资源</button>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={() => loadFromLocal(false)}>
+              <RefreshCw size={16} /> 从本地加载
+            </button>
+            <button className="btn-primary" style={{ background: '#4CAF50', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={syncToLocal}>
+              <Save size={16} /> 同步到本地
+            </button>
+            <button className="btn-primary" onClick={openAddModal}>+ 添加新资源</button>
+          </div>
         </div>
 
         <ExcelImportPanel

@@ -8,6 +8,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ExcelImportPanel from '../components/ExcelImportPanel';
 import { downloadFeatureTemplate, parseFeatureExcel } from '../services/excelService';
 import Modal from './Modal';
+import { RefreshCw, Save } from 'lucide-react';
+import { loadExcelWorkbook, syncDataToSheet, saveExcelWorkbook } from '../utils/excelSyncUtils';
 
 const FEATURE_TYPES = ['Core', 'Meta', 'Eco', 'Content'];
 const TYPE_LABELS = {
@@ -146,6 +148,82 @@ const FeatureConfig = () => {
     return { count: features.length, errors };
   };
 
+  const loadFromLocal = async (isAuto = false) => {
+    try {
+      const { fullData, headers } = await loadExcelWorkbook('FunctionUnlockTable.xlsx');
+      const idIdx = headers.findIndex(h => h && h.toLowerCase() === 'id');
+      const noteIdx = headers.findIndex(h => h && (h.includes('名') || h.toLowerCase() === 'note'));
+      const stageIdx = headers.findIndex(h => h && (h.includes('关卡') || h.toLowerCase() === 'stage'));
+      const dayIdx = headers.findIndex(h => h && (h.includes('天') || h.toLowerCase() === 'day'));
+
+      const features = fullData.slice(4).map((row, idx) => {
+        const id = row[idIdx];
+        if (id === undefined || id === null || id === '') return null;
+        
+        return {
+          id: String(id),
+          name: row[noteIdx] || `模块_${id}`,
+          type: 'Core', // 默认核心
+          unlockCondition: { 
+            type: 'stage', 
+            stage: parseInt(row[stageIdx]) || 0,
+            day: parseInt(row[dayIdx]) || 0,
+            value: (parseInt(row[dayIdx]) || 0) * 1440 // 兼容旧有的 value (分钟)
+          },
+          physicalResources: [],
+          outputResources: [],
+          growthModel: 'linear',
+          maxLevel: 10,
+          params: { slope: 1 },
+          auditParams: { valueCostRatio: 1.0 }
+        };
+      }).filter(Boolean);
+
+      if (features.length > 0) {
+        dispatch({ type: 'REPLACE_FEATURES', payload: features });
+        if (!isAuto) alert(`成功从本地加载 ${features.length} 个功能模块`);
+      }
+    } catch (error) {
+      console.warn('Load from local failed (FunctionUnlockTable.xlsx):', error);
+      if (!isAuto) alert('无法加载 FunctionUnlockTable.xlsx，请检查文件是否存在。');
+    }
+  };
+
+  const syncToLocal = async () => {
+    try {
+      const { workbook, sheet, headers, range } = await loadExcelWorkbook('FunctionUnlockTable.xlsx');
+      
+      const mapping = {
+        'Id': 'id',
+        'Note': 'name',
+        'Stage': (f) => f.unlockCondition?.stage || 0,
+        'Day': (f) => f.unlockCondition?.day || 0
+      };
+
+      syncDataToSheet({
+        sheet,
+        headers,
+        dataToSync: state.features,
+        range,
+        config: {
+          idField: 'Id',
+          mapping: mapping,
+          templateId: 1001 // 假设有一个模板
+        }
+      });
+
+      const result = await saveExcelWorkbook(workbook, 'FunctionUnlockTable.xlsx');
+      alert(result.message || '同步到 FunctionUnlockTable.xlsx 成功！');
+    } catch (error) {
+      console.error('Sync failed:', error);
+      alert('同步失败：' + (error.message || '请检查 EXTERNAL_SYNC_PATH 或文件是否存在'));
+    }
+  };
+
+  React.useEffect(() => {
+    loadFromLocal(true);
+  }, []);
+
   const formatDuration = (mins) => {
     if (mins >= 1440) return `${(mins / 1440).toFixed(1)}天`;
     return `${mins}分钟`;
@@ -167,7 +245,15 @@ const FeatureConfig = () => {
               </button>
             ))}
           </div>
-          <button className="btn-primary" onClick={() => setShowCreateModal(true)}><Plus size={16} /> 创建新模块</button>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={() => loadFromLocal(false)}>
+              <RefreshCw size={16} /> 从本地加载
+            </button>
+            <button className="btn-primary" style={{ background: '#4CAF50', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={syncToLocal}>
+              <Save size={16} /> 同步到本地
+            </button>
+            <button className="btn-primary" onClick={() => setShowCreateModal(true)}><Plus size={16} /> 创建新模块</button>
+          </div>
         </div>
       </div>
 
@@ -198,7 +284,12 @@ const FeatureConfig = () => {
                   </div>
                   <div style={{ marginTop: '0.5rem', display: 'flex', gap: '1.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                     <span>等级上限: <input type="number" value={feat.maxLevel} onChange={e => updateFeature(feat.id, { maxLevel: parseInt(e.target.value) })} style={{ width: 40, background: 'none', border: 'none', borderBottom: '1px solid #555', color: 'white' }} /></span>
-                    <span>解锁: <input type="number" value={feat.unlockCondition.value} onChange={e => updateFeature(feat.id, { unlockCondition: { ...feat.unlockCondition, value: parseInt(e.target.value) } })} style={{ width: 50, background: 'none', border: 'none', borderBottom: '1px solid #555', color: 'white' }} /> min ({formatDuration(feat.unlockCondition.value)})</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      解锁: 
+                      <span style={{ color: 'var(--accent-primary)' }}>D{feat.unlockCondition?.day || 0}</span>
+                      <span style={{ color: 'var(--text-muted)' }}>|</span>
+                      <span>第 {feat.unlockCondition?.stage || 0} 关</span>
+                    </span>
                   </div>
                 </div>
                 <button onClick={() => dispatch({ type: 'DELETE_FEATURE', payload: feat.id })} style={{ background: 'none', border: 'none', color: 'var(--accent-danger)', cursor: 'pointer' }}><Trash2 size={18} /></button>

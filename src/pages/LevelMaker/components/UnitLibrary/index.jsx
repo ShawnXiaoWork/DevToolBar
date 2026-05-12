@@ -6,6 +6,7 @@ import UnitFilters from './UnitFilters';
 import UnitTable from './UnitTable';
 import UnitEditor from './UnitEditor';
 import { calculatePowerScore } from '../../utils/planningUtils';
+import { loadExcelWorkbook, syncDataToSheet, saveExcelWorkbook } from '../../../../utils/excelSyncUtils';
 
 const UnitLibrary = ({ state, dispatch }) => {
   const [editingUnit, setEditingUnit] = useState(null);
@@ -310,126 +311,51 @@ const UnitLibrary = ({ state, dispatch }) => {
   };
 
   const syncToLocal = async () => {
-    if (!currentWorkbook || !tableHeaders) {
-      alert('数据未加载完成，请稍后');
-      return;
-    }
-
-    // 浅拷贝 workbook 及其 Sheet
-    const wb = { ...currentWorkbook };
-    const sheetName = wb.SheetNames[0];
-    const sheet = { ...wb.Sheets[sheetName] };
-    wb.Sheets[sheetName] = sheet;
-
-    const headers = tableHeaders;
-    const idIdx = headers.indexOf('Id');
-    if (idIdx === -1) return;
-
-    // 1. 建立 ID 到 行索引 的映射 (注意：XLSX 索引从 0 开始)
-    const idToRowMap = new Map();
-    const range = XLSX.utils.decode_range(sheet['!ref']);
-    for (let r = 4; r <= range.e.r; r++) {
-      const cell = sheet[XLSX.utils.encode_cell({ c: idIdx, r: r })];
-      if (cell && cell.v !== undefined) {
-        idToRowMap.set(String(cell.v), r);
-      }
-    }
-
-    // 2. 找到 1001 模板行索引
-    let template1001RowIdx = -1;
-    for (let r = 4; r <= range.e.r; r++) {
-      const cell = sheet[XLSX.utils.encode_cell({ c: idIdx, r: r })];
-      if (cell && (cell.v == 1001 || cell.v === '1001')) {
-        template1001RowIdx = r;
-        break;
-      }
-    }
-
-    let nextAvailableRow = range.e.r + 1;
-
-    // 3. 遍历兵种库进行增量更新
-    filteredUnits.forEach(u => {
-      const score = calculatePowerScore(u);
-      let targetRowIdx = idToRowMap.get(String(u.id));
+    try {
+      const { workbook, sheet, headers, range } = await loadExcelWorkbook('ArmyTable.xlsx');
       
-      // 如果是新兵种，克隆 1001 模板行
-      if (targetRowIdx === undefined) {
-        targetRowIdx = nextAvailableRow++;
-        if (template1001RowIdx !== -1) {
-          for (let c = 0; c <= range.e.c; c++) {
-            const fromAddr = XLSX.utils.encode_cell({ c, r: template1001RowIdx });
-            const toAddr = XLSX.utils.encode_cell({ c, r: targetRowIdx });
-            if (sheet[fromAddr]) {
-              sheet[toAddr] = { ...sheet[fromAddr] }; // 拷贝包括样式、批注在内的所有属性
-            }
-          }
-        }
-      }
-
-      // 定义映射关系
       const mapping = {
-        'Id': u.id,
-        'Note': u.name,
-        'Name': `armyName.${u.id}`,
-        'Description': `armyDescription.${u.id}`,
-        'ArmyTag': u.armyTag || 0,
-        'Hp': u.hp,
-        'HpFake': u.hp,
-        'Attack': u.atk,
-        'AttackFake': u.atk,
-        'AttackFreq': u.atkSpeed || 1.0,
-        'Speed': u.spd || 75,
-        'AttackRange': u.atkRange || 100,
-        'FindRange': u.detRange || 200,
-        'Race': Array.isArray(u.roles) ? u.roles.join('|') : u.roles,
-        'Icon': `m${u.id}`,
-        'Prefab': u.prefab || 10001,
-        'SkillIds': `[${u.commonSkill || 10010}]`,
-        'Cost': score
+        'Id': 'id',
+        'Note': 'name',
+        'Name': (u) => `armyName.${u.id}`,
+        'Description': (u) => `armyDescription.${u.id}`,
+        'ArmyTag': (u) => u.armyTag || 0,
+        'Hp': 'hp',
+        'HpFake': 'hp',
+        'Attack': 'atk',
+        'AttackFake': 'atk',
+        'AttackFreq': (u) => u.atkSpeed || 1.0,
+        'Speed': (u) => u.spd || 75,
+        'AttackRange': (u) => u.atkRange || 100,
+        'FindRange': (u) => u.detRange || 200,
+        'Race': (u) => Array.isArray(u.roles) ? u.roles.join('|') : u.roles,
+        'Icon': (u) => `m${u.id}`,
+        'Prefab': (u) => u.prefab || 10001,
+        'SkillIds': (u) => `[${u.commonSkill || 10010}]`,
+        'Cost': (u) => calculatePowerScore(u)
       };
 
-      // 覆盖对应列的值 (.v)
-      headers.forEach((h, i) => {
-        if (mapping[h] !== undefined) {
-          const addr = XLSX.utils.encode_cell({ c: i, r: targetRowIdx });
-          const val = mapping[h];
-          if (!sheet[addr]) {
-            sheet[addr] = { v: val, t: typeof val === 'number' ? 'n' : 's' };
-          } else {
-            sheet[addr].v = val;
-            sheet[addr].t = typeof val === 'number' ? 'n' : 's';
-          }
+      syncDataToSheet({
+        sheet,
+        headers,
+        dataToSync: filteredUnits,
+        range,
+        config: {
+          idField: 'Id',
+          mapping: mapping,
+          templateId: 1001
         }
       });
-    });
 
-    // 更新表格范围
-    range.e.r = nextAvailableRow - 1;
-    sheet['!ref'] = XLSX.utils.encode_range(range);
-
-    // 4. 生成二进制并同步
-    try {
-      // 注意：社区版 XLSX 可能在写入时丢失部分复杂样式，但直接操作 cell.v 能最大限度保留原始信息
-      const content = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+      const result = await saveExcelWorkbook(workbook, 'ArmyTable.xlsx');
+      alert(result.message || '本地 ArmyTable.xlsx 同步成功！');
       
-      const response = await fetch(`${import.meta.env.BASE_URL}api/save-excel`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        alert(result.message || '本地 ArmyTable.xlsx 同步成功！');
-        // 更新本地状态，以便后续操作
-        setCurrentWorkbook(wb);
-        setFullTableData(XLSX.utils.sheet_to_json(sheet, { header: 1 }));
-      } else {
-        throw new Error('Server returned error');
-      }
+      // 更新本地状态
+      setCurrentWorkbook(workbook);
+      setFullTableData(XLSX.utils.sheet_to_json(sheet, { header: 1 }));
     } catch (err) {
       console.error('Sync failed:', err);
-      alert('同步失败，请确保 npm run dev 正在运行。');
+      alert('同步失败：' + (err.message || '请检查网络或文件是否存在'));
     }
   };
 

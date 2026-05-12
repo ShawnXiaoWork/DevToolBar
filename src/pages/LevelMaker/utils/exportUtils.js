@@ -4,6 +4,7 @@
  */
 
 import * as XLSX from 'xlsx';
+import { loadExcelWorkbook, saveExcelWorkbook } from '../../../utils/excelSyncUtils';
 
 /**
  * 设计 15 波次的权重曲线 (数值策划预设)
@@ -165,21 +166,15 @@ export const generateStageStepData = (fullLevelPlan) => {
  */
 const syncTable = async (filename, generateFn, fullLevelPlan) => {
   try {
-    let workbook;
-    try {
-      const response = await fetch(`${import.meta.env.BASE_URL}api/read-excel?filename=${filename}`);
-      if (!response.ok) throw new Error();
-      const arrayBuffer = await response.arrayBuffer();
-      workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array', cellStyles: true, cellNF: true, cellComments: true });
-    } catch (e) {
-      workbook = XLSX.utils.book_new();
+    const { workbook, sheet } = await loadExcelWorkbook(filename).catch(async () => {
+      // 如果读取失败，创建一个包含基础表头的空表
+      const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet([['#'], ['#'], ['#'], ['#']]);
-      XLSX.utils.book_append_sheet(workbook, ws, "Sheet1");
-    }
+      XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+      return { workbook: wb, sheet: ws };
+    });
     
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const rowsToUpdate = generateFn(fullLevelPlan); // { rowIndex: { colIndex: value } }
+    const rowsToUpdate = generateFn(fullLevelPlan); // { relativeRowIdx: { colIndex: value } }
     const dataStartRowIdx = 4;
 
     Object.entries(rowsToUpdate).forEach(([relativeRowIdx, colData]) => {
@@ -201,14 +196,7 @@ const syncTable = async (filename, generateFn, fullLevelPlan) => {
     if (range.e.r < maxRowIdx) range.e.r = maxRowIdx;
     sheet['!ref'] = XLSX.utils.encode_range(range);
 
-    const content = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-    const saveResponse = await fetch(`${import.meta.env.BASE_URL}api/save-excel`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, filename })
-    });
-
-    if (!saveResponse.ok) throw new Error(`${filename} sync failed`);
+    await saveExcelWorkbook(workbook, filename);
   } catch (error) {
     console.error(`同步 ${filename} 失败:`, error);
     throw error;

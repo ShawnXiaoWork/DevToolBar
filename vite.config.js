@@ -27,7 +27,7 @@ export default defineConfig(({ mode }) => {
                   const { content, filename = 'ArmyTable.xlsx' } = JSON.parse(body);
                   
                   // 安全检查：仅允许保存特定的 xlsx 文件到指定目录
-                  const allowedFiles = ['ArmyTable.xlsx', 'StageStepTable.xlsx', 'StageTable.xlsx'];
+                  const allowedFiles = ['ArmyTable.xlsx', 'StageStepTable.xlsx', 'StageTable.xlsx', 'ItemTable.xlsx', 'FunctionUnlockTable.xlsx'];
                   if (!allowedFiles.includes(filename)) {
                     res.statusCode = 403;
                     return res.end('Forbidden: Invalid filename');
@@ -71,7 +71,7 @@ export default defineConfig(({ mode }) => {
               const url = new URL(req.url, `http://${req.headers.host}`);
               const filename = url.searchParams.get('filename') || 'ArmyTable.xlsx';
               
-              const allowedFiles = ['ArmyTable.xlsx', 'StageStepTable.xlsx', 'StageTable.xlsx'];
+              const allowedFiles = ['ArmyTable.xlsx', 'StageStepTable.xlsx', 'StageTable.xlsx', 'ItemTable.xlsx', 'FunctionUnlockTable.xlsx'];
               if (!allowedFiles.includes(filename)) {
                 res.statusCode = 403;
                 return res.end('Forbidden');
