@@ -8,7 +8,7 @@ import UnitEditor from './UnitEditor';
 import { calculatePowerScore } from '../../utils/planningUtils';
 import { loadExcelWorkbook, syncDataToSheet, saveExcelWorkbook } from '../../../../utils/excelSyncUtils';
 
-const UnitLibrary = ({ state, dispatch }) => {
+const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
   const [editingUnit, setEditingUnit] = useState(null);
   const [unitFilter, setUnitFilter] = useState({ name: '', roles: [], sortBy: 'id', sortDir: 'asc' });
   const [default1001, setDefault1001] = useState(null);
@@ -310,10 +310,103 @@ const UnitLibrary = ({ state, dispatch }) => {
     XLSX.writeFile(wb, 'ArmyTable_Sync_Export.xlsx');
   };
 
+<<<<<<< HEAD
   const syncToLocal = async () => {
     try {
       const { workbook, sheet, headers, range } = await loadExcelWorkbook('ArmyTable.xlsx');
       
+=======
+  const syncToLocal = async (roleWeights, derivationParams) => {
+    if (!currentWorkbook) {
+      alert('请先导入 ArmyTable.xlsx 模板！');
+      return;
+    }
+
+    const wb = { ...currentWorkbook };
+    const sheetName = wb.SheetNames[0];
+    const sheet = wb.Sheets[sheetName];
+    const headers = fullTableData[1];
+    const range = XLSX.utils.decode_range(sheet['!ref']);
+
+    // 1. 构建 ID 到行索引的映射，方便增量更新
+    const idToRowMap = new Map();
+    let template1001RowIdx = -1;
+    let nextAvailableRow = 4;
+
+    for (let r = 4; r <= range.e.r; r++) {
+      const idAddr = XLSX.utils.encode_cell({ c: 1, r: r }); // Id 通常在第 2 列 (索引 1)
+      const idVal = sheet[idAddr] ? String(sheet[idAddr].v) : '';
+      if (idVal) {
+        idToRowMap.set(idVal, r);
+        if (idVal === '1001') template1001RowIdx = r;
+      }
+      nextAvailableRow = r + 1;
+    }
+
+    // 2. 存量数据清洗 (处理 Roles === -1 的残留配置)
+    const rolesColIdx = headers.indexOf('Roles');
+    const hpColIdx = headers.indexOf('Hp');
+    const atkColIdx = headers.indexOf('Attack');
+    const hpFakeColIdx = headers.indexOf('HpFake');
+    const atkFakeColIdx = headers.indexOf('AttackFake');
+    const idColIdx = headers.indexOf('Id');
+
+    if (rolesColIdx !== -1 && hpColIdx !== -1 && atkColIdx !== -1) {
+      for (let r = 4; r <= range.e.r; r++) {
+        const idAddr = XLSX.utils.encode_cell({ c: idColIdx, r: r });
+        const idVal = sheet[idAddr] ? String(sheet[idAddr].v) : '';
+        if (!idVal || idVal === '1001') continue;
+
+        const rolesAddr = XLSX.utils.encode_cell({ c: rolesColIdx, r: r });
+        const rolesVal = sheet[rolesAddr] ? Number(sheet[rolesAddr].v) : 0;
+
+        if (rolesVal === -1) {
+          const currHp = sheet[XLSX.utils.encode_cell({ c: hpColIdx, r: r })]?.v || 100;
+          const currAtk = sheet[XLSX.utils.encode_cell({ c: atkColIdx, r: r })]?.v || 10;
+          const ratio = currHp / (currAtk || 1);
+
+          let bestRole = 1;
+          let minDiff = Infinity;
+          Object.entries(roleWeights).forEach(([rid, weights]) => {
+            const weightRatio = weights.hp / (weights.atk || 1);
+            const diff = Math.abs(ratio - weightRatio);
+            if (diff < minDiff) {
+              minDiff = diff;
+              bestRole = Number(rid);
+            }
+          });
+
+          sheet[rolesAddr] = { v: bestRole, t: 'n' };
+          const finalHp = Math.round(derivationParams.baseHp * roleWeights[bestRole].hp);
+          const finalAtk = Math.round(derivationParams.baseAtk * roleWeights[bestRole].atk);
+
+          sheet[XLSX.utils.encode_cell({ c: hpColIdx, r: r })] = { v: finalHp, t: 'n' };
+          sheet[XLSX.utils.encode_cell({ c: atkColIdx, r: r })] = { v: finalAtk, t: 'n' };
+          if (hpFakeColIdx !== -1) sheet[XLSX.utils.encode_cell({ c: hpFakeColIdx, r: r })] = { v: finalHp, t: 'n' };
+          if (atkFakeColIdx !== -1) sheet[XLSX.utils.encode_cell({ c: atkFakeColIdx, r: r })] = { v: finalAtk, t: 'n' };
+        }
+      }
+    }
+
+    // 3. 遍历兵种库进行增量更新
+    filteredUnits.forEach(u => {
+      const score = calculatePowerScore(u);
+      let targetRowIdx = idToRowMap.get(String(u.id));
+      
+      if (targetRowIdx === undefined) {
+        targetRowIdx = nextAvailableRow++;
+        if (template1001RowIdx !== -1) {
+          for (let c = 0; c <= range.e.c; c++) {
+            const fromAddr = XLSX.utils.encode_cell({ c, r: template1001RowIdx });
+            const toAddr = XLSX.utils.encode_cell({ c, r: targetRowIdx });
+            if (sheet[fromAddr]) {
+              sheet[toAddr] = { ...sheet[fromAddr] };
+            }
+          }
+        }
+      }
+
+>>>>>>> bfca53e6e3db031642f92a603d5220d278f7e11d
       const mapping = {
         'Id': 'id',
         'Note': 'name',
@@ -335,6 +428,7 @@ const UnitLibrary = ({ state, dispatch }) => {
         'Cost': (u) => calculatePowerScore(u)
       };
 
+<<<<<<< HEAD
       syncDataToSheet({
         sheet,
         headers,
@@ -344,6 +438,29 @@ const UnitLibrary = ({ state, dispatch }) => {
           idField: 'Id',
           mapping: mapping,
           templateId: 1001
+=======
+      headers.forEach((h, i) => {
+        const addr = XLSX.utils.encode_cell({ c: i, r: targetRowIdx });
+        
+        if (h === 'Roles') {
+          const existingCell = sheet[addr];
+          const existingVal = existingCell ? existingCell.v : undefined;
+          if (existingVal === -1 || existingVal === undefined) {
+            const roleVal = (u.roles && u.roles.length > 0) ? Number(u.roles[0]) : 0;
+            sheet[addr] = { v: roleVal, t: 'n' };
+          }
+          return;
+        }
+
+        if (mapping[h] !== undefined) {
+          const val = mapping[h];
+          if (!sheet[addr]) {
+            sheet[addr] = { v: val, t: typeof val === 'number' ? 'n' : 's' };
+          } else {
+            sheet[addr].v = val;
+            sheet[addr].t = typeof val === 'number' ? 'n' : 's';
+          }
+>>>>>>> bfca53e6e3db031642f92a603d5220d278f7e11d
         }
       });
 
@@ -382,7 +499,7 @@ const UnitLibrary = ({ state, dispatch }) => {
           <button className="btn-outline" onClick={() => exportToExcel(filteredUnits)}>
             <Download size={16} /> 导出至 Excel
           </button>
-          <button className="btn-primary" style={{ background: '#4CAF50' }} onClick={syncToLocal}>
+          <button className="btn-primary" style={{ background: '#4CAF50' }} onClick={() => syncToLocal(roleWeights, derivationParams)}>
             <Users size={16} /> 同步至本地文件
           </button>
           <button className="btn-outline" style={{ color: '#FF5252', borderColor: 'rgba(255,82,82,0.3)' }} onClick={() => {

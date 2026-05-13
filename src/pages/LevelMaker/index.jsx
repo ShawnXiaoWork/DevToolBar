@@ -51,8 +51,8 @@ const LevelMaker = () => {
   });
 
   const [derivationParams, setDerivationParams] = useState({
-    baseHp: 100,
-    baseAtk: 10,
+    baseHp: 50,
+    baseAtk: 20,
     baseSpd: 75,
     baseSkillPower: 0,
     targetRole: 0,
@@ -110,7 +110,14 @@ const LevelMaker = () => {
 
       <div className="module-content">
         <AnimatePresence mode="wait">
-          {activeTab === 'units' && <UnitLibrary state={state} dispatch={dispatch} />}
+          {activeTab === 'units' && (
+            <UnitLibrary 
+              state={state} 
+              dispatch={dispatch} 
+              roleWeights={roleWeights}
+              derivationParams={derivationParams}
+            />
+          )}
           {activeTab === 'budget' && (
             <BudgetConfig 
               state={state} 

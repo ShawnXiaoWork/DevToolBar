@@ -108,7 +108,7 @@ const initialState = {
   // 关卡平衡配置
   levelConfig: {
     baseScore: 50000,
-    difficultyFactor: 1.2,
+    difficultyFactor: 0.2,
     spikes: Array.from({ length: 20 }, (_, i) => {
       const level = (i + 1) * 10;
       const chapter = i + 1;
