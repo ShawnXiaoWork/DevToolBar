@@ -310,103 +310,90 @@ const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
     XLSX.writeFile(wb, 'ArmyTable_Sync_Export.xlsx');
   };
 
-<<<<<<< HEAD
-  const syncToLocal = async () => {
+  const syncToLocal = async (roleWeights, derivationParams) => {
     try {
       const { workbook, sheet, headers, range } = await loadExcelWorkbook('ArmyTable.xlsx');
       
-=======
-  const syncToLocal = async (roleWeights, derivationParams) => {
-    if (!currentWorkbook) {
-      alert('请先导入 ArmyTable.xlsx 模板！');
-      return;
-    }
+      // 1. 存量数据清洗 (处理 Excel 中 Roles === -1 的残留配置)
+      const rolesColIdx = headers.indexOf('Roles');
+      const hpColIdx = headers.indexOf('Hp');
+      const atkColIdx = headers.indexOf('Attack');
+      const hpFakeColIdx = headers.indexOf('HpFake');
+      const atkFakeColIdx = headers.indexOf('AttackFake');
+      const idColIdx = headers.indexOf('Id');
+      const noteColIdx = headers.indexOf('Note');
 
-    const wb = { ...currentWorkbook };
-    const sheetName = wb.SheetNames[0];
-    const sheet = wb.Sheets[sheetName];
-    const headers = fullTableData[1];
-    const range = XLSX.utils.decode_range(sheet['!ref']);
+      if (rolesColIdx !== -1 && hpColIdx !== -1 && atkColIdx !== -1) {
+        for (let r = 4; r <= range.e.r; r++) {
+          const idAddr = XLSX.utils.encode_cell({ c: idColIdx, r: r });
+          const idVal = sheet[idAddr] ? String(sheet[idAddr].v) : '';
+          if (!idVal || idVal === '1001') continue;
 
-    // 1. 构建 ID 到行索引的映射，方便增量更新
-    const idToRowMap = new Map();
-    let template1001RowIdx = -1;
-    let nextAvailableRow = 4;
+          const rolesAddr = XLSX.utils.encode_cell({ c: rolesColIdx, r: r });
+          const rolesVal = sheet[rolesAddr] ? Number(sheet[rolesAddr].v) : undefined;
 
-    for (let r = 4; r <= range.e.r; r++) {
-      const idAddr = XLSX.utils.encode_cell({ c: 1, r: r }); // Id 通常在第 2 列 (索引 1)
-      const idVal = sheet[idAddr] ? String(sheet[idAddr].v) : '';
-      if (idVal) {
-        idToRowMap.set(idVal, r);
-        if (idVal === '1001') template1001RowIdx = r;
-      }
-      nextAvailableRow = r + 1;
-    }
-
-    // 2. 存量数据清洗 (处理 Roles === -1 的残留配置)
-    const rolesColIdx = headers.indexOf('Roles');
-    const hpColIdx = headers.indexOf('Hp');
-    const atkColIdx = headers.indexOf('Attack');
-    const hpFakeColIdx = headers.indexOf('HpFake');
-    const atkFakeColIdx = headers.indexOf('AttackFake');
-    const idColIdx = headers.indexOf('Id');
-
-    if (rolesColIdx !== -1 && hpColIdx !== -1 && atkColIdx !== -1) {
-      for (let r = 4; r <= range.e.r; r++) {
-        const idAddr = XLSX.utils.encode_cell({ c: idColIdx, r: r });
-        const idVal = sheet[idAddr] ? String(sheet[idAddr].v) : '';
-        if (!idVal || idVal === '1001') continue;
-
-        const rolesAddr = XLSX.utils.encode_cell({ c: rolesColIdx, r: r });
-        const rolesVal = sheet[rolesAddr] ? Number(sheet[rolesAddr].v) : 0;
-
-        if (rolesVal === -1) {
-          const currHp = sheet[XLSX.utils.encode_cell({ c: hpColIdx, r: r })]?.v || 100;
-          const currAtk = sheet[XLSX.utils.encode_cell({ c: atkColIdx, r: r })]?.v || 10;
-          const ratio = currHp / (currAtk || 1);
-
-          let bestRole = 1;
-          let minDiff = Infinity;
-          Object.entries(roleWeights).forEach(([rid, weights]) => {
-            const weightRatio = weights.hp / (weights.atk || 1);
-            const diff = Math.abs(ratio - weightRatio);
-            if (diff < minDiff) {
-              minDiff = diff;
-              bestRole = Number(rid);
+          if (rolesVal === -1) {
+            const noteVal = noteColIdx !== -1 && sheet[XLSX.utils.encode_cell({ c: noteColIdx, r: r })] 
+              ? String(sheet[XLSX.utils.encode_cell({ c: noteColIdx, r: r })].v) : '';
+              
+            let bestRole = 1;
+            if (noteVal.match(/盾|甲|巨|熊|象|肉|防/)) {
+              bestRole = 0;
+            } else if (noteVal.match(/弓|法|炮|巫|箭|弩|魔|狙|精/)) {
+              bestRole = 2;
+            } else if (noteVal.match(/刺|医|疗|牧|毒|影|隐|辅/)) {
+              bestRole = 3;
             }
-          });
 
-          sheet[rolesAddr] = { v: bestRole, t: 'n' };
-          const finalHp = Math.round(derivationParams.baseHp * roleWeights[bestRole].hp);
-          const finalAtk = Math.round(derivationParams.baseAtk * roleWeights[bestRole].atk);
+            const currHp = sheet[XLSX.utils.encode_cell({ c: hpColIdx, r: r })]?.v || derivationParams.baseHp;
+            const roleHpMulti = roleWeights[bestRole]?.hp || 1.0;
+            const roleAtkMulti = roleWeights[bestRole]?.atk || 1.0;
+            
+            // 根据当前HP推算档次
+            const tier = Math.max(1, Math.round(currHp / (derivationParams.baseHp * roleHpMulti)));
+            const finalHp = Math.round(tier * derivationParams.baseHp * roleHpMulti);
+            const finalAtk = Math.round(tier * derivationParams.baseAtk * roleAtkMulti);
 
-          sheet[XLSX.utils.encode_cell({ c: hpColIdx, r: r })] = { v: finalHp, t: 'n' };
-          sheet[XLSX.utils.encode_cell({ c: atkColIdx, r: r })] = { v: finalAtk, t: 'n' };
-          if (hpFakeColIdx !== -1) sheet[XLSX.utils.encode_cell({ c: hpFakeColIdx, r: r })] = { v: finalHp, t: 'n' };
-          if (atkFakeColIdx !== -1) sheet[XLSX.utils.encode_cell({ c: atkFakeColIdx, r: r })] = { v: finalAtk, t: 'n' };
-        }
-      }
-    }
-
-    // 3. 遍历兵种库进行增量更新
-    filteredUnits.forEach(u => {
-      const score = calculatePowerScore(u);
-      let targetRowIdx = idToRowMap.get(String(u.id));
-      
-      if (targetRowIdx === undefined) {
-        targetRowIdx = nextAvailableRow++;
-        if (template1001RowIdx !== -1) {
-          for (let c = 0; c <= range.e.c; c++) {
-            const fromAddr = XLSX.utils.encode_cell({ c, r: template1001RowIdx });
-            const toAddr = XLSX.utils.encode_cell({ c, r: targetRowIdx });
-            if (sheet[fromAddr]) {
-              sheet[toAddr] = { ...sheet[fromAddr] };
-            }
+            sheet[rolesAddr] = { v: bestRole, t: 'n' };
+            sheet[XLSX.utils.encode_cell({ c: hpColIdx, r: r })] = { v: finalHp, t: 'n' };
+            sheet[XLSX.utils.encode_cell({ c: atkColIdx, r: r })] = { v: finalAtk, t: 'n' };
+            if (hpFakeColIdx !== -1) sheet[XLSX.utils.encode_cell({ c: hpFakeColIdx, r: r })] = { v: finalHp, t: 'n' };
+            if (atkFakeColIdx !== -1) sheet[XLSX.utils.encode_cell({ c: atkFakeColIdx, r: r })] = { v: finalAtk, t: 'n' };
           }
         }
       }
 
->>>>>>> bfca53e6e3db031642f92a603d5220d278f7e11d
+      // 2. 清洗 UI 状态中要同步的数据，防止用老的 ui 状态覆盖掉刚才在 Excel 中清洗好的数据
+      const cleanedUnits = filteredUnits.map(u => {
+        if (u.roles && u.roles[0] === -1) {
+          const noteVal = u.name || '';
+          let bestRole = 1;
+          if (noteVal.match(/盾|甲|巨|熊|象|肉|防/)) {
+            bestRole = 0;
+          } else if (noteVal.match(/弓|法|炮|巫|箭|弩|魔|狙|精/)) {
+            bestRole = 2;
+          } else if (noteVal.match(/刺|医|疗|牧|毒|影|隐|辅/)) {
+            bestRole = 3;
+          }
+
+          const roleHpMulti = roleWeights[bestRole]?.hp || 1.0;
+          const roleAtkMulti = roleWeights[bestRole]?.atk || 1.0;
+          
+          const tier = Math.max(1, Math.round(u.hp / (derivationParams.baseHp * roleHpMulti)));
+          const finalHp = Math.round(tier * derivationParams.baseHp * roleHpMulti);
+          const finalAtk = Math.round(tier * derivationParams.baseAtk * roleAtkMulti);
+
+          return {
+            ...u,
+            roles: [bestRole],
+            hp: finalHp,
+            atk: finalAtk
+          };
+        }
+        return u;
+      });
+
+      // 3. 将本地数据增量同步至 Sheet
       const mapping = {
         'Id': 'id',
         'Note': 'name',
@@ -422,45 +409,22 @@ const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
         'AttackRange': (u) => u.atkRange || 100,
         'FindRange': (u) => u.detRange || 200,
         'Race': (u) => Array.isArray(u.roles) ? u.roles.join('|') : u.roles,
+        'Roles': (u) => (u.roles && u.roles.length > 0) ? Number(u.roles[0]) : 0,
         'Icon': (u) => `m${u.id}`,
         'Prefab': (u) => u.prefab || 10001,
         'SkillIds': (u) => `[${u.commonSkill || 10010}]`,
         'Cost': (u) => calculatePowerScore(u)
       };
 
-<<<<<<< HEAD
       syncDataToSheet({
         sheet,
         headers,
-        dataToSync: filteredUnits,
+        dataToSync: cleanedUnits,
         range,
         config: {
           idField: 'Id',
           mapping: mapping,
           templateId: 1001
-=======
-      headers.forEach((h, i) => {
-        const addr = XLSX.utils.encode_cell({ c: i, r: targetRowIdx });
-        
-        if (h === 'Roles') {
-          const existingCell = sheet[addr];
-          const existingVal = existingCell ? existingCell.v : undefined;
-          if (existingVal === -1 || existingVal === undefined) {
-            const roleVal = (u.roles && u.roles.length > 0) ? Number(u.roles[0]) : 0;
-            sheet[addr] = { v: roleVal, t: 'n' };
-          }
-          return;
-        }
-
-        if (mapping[h] !== undefined) {
-          const val = mapping[h];
-          if (!sheet[addr]) {
-            sheet[addr] = { v: val, t: typeof val === 'number' ? 'n' : 's' };
-          } else {
-            sheet[addr].v = val;
-            sheet[addr].t = typeof val === 'number' ? 'n' : 's';
-          }
->>>>>>> bfca53e6e3db031642f92a603d5220d278f7e11d
         }
       });
 
@@ -470,6 +434,16 @@ const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
       // 更新本地状态
       setCurrentWorkbook(workbook);
       setFullTableData(XLSX.utils.sheet_to_json(sheet, { header: 1 }));
+      
+      // 同时更新到 React 状态中，让 UI 实时刷新
+      const updatedUnits = cleanedUnits.filter((cu, idx) => cu !== filteredUnits[idx]);
+      if (updatedUnits.length > 0) {
+        const newAllUnits = state.units.map(su => {
+          const cleaned = updatedUnits.find(uu => uu.id === su.id);
+          return cleaned || su;
+        });
+        dispatch({ type: 'IMPORT_UNITS', payload: newAllUnits, replace: true });
+      }
     } catch (err) {
       console.error('Sync failed:', err);
       alert('同步失败：' + (err.message || '请检查网络或文件是否存在'));
