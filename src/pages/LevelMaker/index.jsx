@@ -5,7 +5,8 @@ import {
   Target,
   BarChart3,
   TrendingUp,
-  Sliders
+  Sliders,
+  Gift
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 
@@ -15,6 +16,7 @@ import BudgetConfig from './components/BudgetConfig';
 import RosterPlanning from './components/RosterPlanning';
 import DeploymentPlan from './components/DeploymentPlan';
 import LevelAnalysis from './components/LevelAnalysis';
+import RewardConfig from './components/RewardConfig';
 
 // 自定义 Hooks
 import { useLevelPlanning } from './hooks/useLevelPlanning';
@@ -106,6 +108,9 @@ const LevelMaker = () => {
         <button className={activeTab === 'analysis' ? 'active' : ''} onClick={() => setActiveTab('analysis')}>
           <BarChart3 size={18} /> 单关模拟分析
         </button>
+        <button className={activeTab === 'rewards' ? 'active' : ''} onClick={() => setActiveTab('rewards')}>
+          <Gift size={18} /> 关卡资源投放
+        </button>
       </div>
 
       <div className="module-content">
@@ -151,6 +156,9 @@ const LevelMaker = () => {
               previewLevel={previewLevel} 
               setPreviewLevel={setPreviewLevel} 
             />
+          )}
+          {activeTab === 'rewards' && (
+            <RewardConfig state={state} dispatch={dispatch} />
           )}
         </AnimatePresence>
       </div>
