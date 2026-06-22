@@ -20,10 +20,10 @@ export const calculatePowerScore = (unit) => {
  * 计算关卡难度预算
  */
 export const getLevelBudget = (level, config) => {
-  const { baseScore, difficultyFactor, spikes } = config;
+  const { baseScore, initialMultiplier = 1.0, difficultyFactor, spikes } = config;
   const interval = 10;
 
-  let budget = baseScore * Math.pow(level, difficultyFactor);
+  let budget = baseScore * initialMultiplier * Math.pow(level, difficultyFactor);
 
   const steps = (spikes || []).filter(s => s.type === 'step' && level >= s.level);
   let stepHpMultiplier = 1;

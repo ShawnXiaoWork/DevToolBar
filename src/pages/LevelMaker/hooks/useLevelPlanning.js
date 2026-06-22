@@ -34,8 +34,9 @@ export const useLevelPlanning = (state, config) => {
       const targetTierInt = Number(targetTier.replace('T', ''));
 
       // 1. 获取基础系数 (用于计算展示战力，虽不作为投放约束)
+      const initialMultiplier = levelConfig.initialMultiplier || 1.0;
       const steps = (levelConfig.spikes || []).filter(s => s.type === 'step' && level >= s.level);
-      let hpCoeff = 1, atkCoeff = 1;
+      let hpCoeff = initialMultiplier, atkCoeff = initialMultiplier;
       steps.forEach(s => { hpCoeff *= (s.hpMultiplier || 1); atkCoeff *= (s.atkMultiplier || 1); });
 
       const peak = (levelConfig.spikes || []).find(s => s.level === level && s.type === 'peak');
@@ -53,7 +54,7 @@ export const useLevelPlanning = (state, config) => {
       const selected = [];
 
       // 3. 强制投放 2 个 Boss (体验优先级最高)
-      const allBosses = scaledUnits.filter(u => u.armyTag === 9);
+      const allBosses = scaledUnits.filter(u => u.armyTag >= 20);
       let tierBossPool = allBosses.filter(u => u.name.includes(targetTier));
       if (tierBossPool.length === 0) tierBossPool = allBosses;
 

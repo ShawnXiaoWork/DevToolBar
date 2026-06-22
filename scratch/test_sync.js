@@ -1,43 +1,19 @@
-/**
- * 关卡部署导出工具类
- * 采用数值策划导向的“波次节奏曲线”算法
- */
-
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import * as XLSX from 'xlsx';
-import { loadExcelWorkbook, saveExcelWorkbook } from '../../../utils/excelSyncUtils';
 
-/**
- * 设计 15 波次的权重曲线 (数值策划预设)
- * 模拟 Roguelike 节奏：线性增长 -> 呼吸期 -> 指数爆发
- */
-const WAVE_WEIGHT_CURVE = [
-  0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.12, // 1-7 波：线性递增，第 7 波达到前中期峰值 (0.39)
-  0.04,                                     // 8 波：中场 Boss 节点 (压力释放，突出 Boss 个体)
-  0.06, 0.08, 0.10, 0.12, 0.14, 0.18,       // 9-14 波：高频爬坡，引入强力组合 (0.68)
-  0.03                                      // 15 波：决战时刻 (极致精简小怪，决战 Boss)
-];
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-/**
- * 兵种解锁逻辑：模拟 Roguelike 的引入感
- * @param {number} wave 当前波次 (1-15)
- * @param {number} totalUnits 总兵种类型数
- * @returns {number} 当前波次可使用的兵种类型上限
- */
-const getUnlockCount = (wave, totalTypes) => {
-  if (wave <= 2) return Math.max(1, Math.ceil(totalTypes * 0.3));
-  if (wave <= 5) return Math.max(1, Math.ceil(totalTypes * 0.5));
-  if (wave <= 7) return Math.max(1, Math.ceil(totalTypes * 0.8));
-  return totalTypes; // 8 波以后全开
-};
+// Mock dynamic import or require
+const origPath = path.resolve(__dirname, './orig_StageStepTable.xlsx');
+const destPath = path.resolve(__dirname, './test_synced_output.xlsx');
 
-// 列索引映射常量 (基于模板分析)
-const STAGE_COL = {
-  ID: 1,
-  REMARKS: 2,
-  ATK: 21,
-  HP: 22
-};
+// 1. Copy original file to test_synced_output.xlsx first to simulate load and save on same
+fs.copyFileSync(origPath, destPath);
 
+// Define STEP_COL
 const STEP_COL = {
   ID: 1,
   LEVEL: 2,
@@ -50,30 +26,44 @@ const STEP_COL = {
   CASTLE: 9
 };
 
-/**
- * 生成 StageTable 数据 (稀疏映射版)
- * 返回格式: { rowIndex: { colIndex: value } }
- */
-export const generateStageTableData = (fullLevelPlan) => {
-  const rows = {};
-  fullLevelPlan.forEach((lp, i) => {
-    const level = lp.level;
-    const baseHp = Number(lp.hpCoeff.toFixed(2));
-    const baseAtk = Number(lp.atkCoeff.toFixed(2));
+const WAVE_WEIGHT_CURVE = [
+  0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.12,
+  0.04,
+  0.06, 0.08, 0.10, 0.12, 0.14, 0.18,
+  0.03
+];
 
-    rows[i] = {
-      [STAGE_COL.ID]: level,
-      [STAGE_COL.REMARKS]: `关卡 ${level}`,
-      [STAGE_COL.ATK]: baseAtk,
-      [STAGE_COL.HP]: baseHp
-    };
-  });
-  return rows;
+const getUnlockCount = (wave, totalTypes) => {
+  if (wave <= 2) return Math.max(1, Math.ceil(totalTypes * 0.3));
+  if (wave <= 5) return Math.max(1, Math.ceil(totalTypes * 0.5));
+  if (wave <= 7) return Math.max(1, Math.ceil(totalTypes * 0.8));
+  return totalTypes;
 };
 
-/**
- * 生成 StageStepTable 数据 (稀疏映射版)
- */
+// Generate StageStepTable mock plan
+const mockFullLevelPlan = [
+  {
+    level: 1,
+    hpCoeff: 1.0,
+    atkCoeff: 1.0,
+    selected: [
+      { id: '10001', count: 50, assignedRole: 'NORMAL', maxRow: 15, spawnRates: 0.4 },
+      { id: '20001', count: 30, assignedRole: 'NORMAL', maxRow: 15, spawnRates: 0.4 },
+      { id: '90001', count: 1, assignedRole: 'BOSS', maxRow: 15, spawnRates: 0.4 }
+    ]
+  },
+  {
+    level: 2,
+    hpCoeff: 1.2,
+    atkCoeff: 1.2,
+    selected: [
+      { id: '10002', count: 60, assignedRole: 'NORMAL', maxRow: 15, spawnRates: 0.4 },
+      { id: '20002', count: 40, assignedRole: 'NORMAL', maxRow: 15, spawnRates: 0.4 },
+      { id: '90002', count: 1, assignedRole: 'BOSS', maxRow: 15, spawnRates: 0.4 }
+    ]
+  }
+];
+
 export const generateStageStepData = (fullLevelPlan) => {
   const rows = {};
   let currentStepId = 1;
@@ -161,27 +151,26 @@ export const generateStageStepData = (fullLevelPlan) => {
   return rows;
 };
 
-/**
- * 通用 Excel 稀疏更新同步函数
- */
-const syncTable = async (filename, generateFn, fullLevelPlan) => {
+const runTest = async () => {
   try {
-    const { workbook, sheet } = await loadExcelWorkbook(filename).catch(async () => {
-      // 如果读取失败，创建一个包含基础表头的空表
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet([['#'], ['#'], ['#'], ['#']]);
-      XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-      return { workbook: wb, sheet: ws };
+    const buffer = fs.readFileSync(destPath);
+    const workbook = XLSX.read(new Uint8Array(buffer), {
+      type: 'array',
+      cellStyles: true,
+      cellNF: true,
+      cellComments: true
     });
     
-    const rowsToUpdate = generateFn(fullLevelPlan); // { relativeRowIdx: { colIndex: value } }
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    
+    const rowsToUpdate = generateStageStepData(mockFullLevelPlan);
     const dataStartRowIdx = 4;
 
     Object.entries(rowsToUpdate).forEach(([relativeRowIdx, colData]) => {
       const targetRowIdx = dataStartRowIdx + parseInt(relativeRowIdx);
       Object.entries(colData).forEach(([c, val]) => {
         const addr = XLSX.utils.encode_cell({ c: parseInt(c), r: targetRowIdx });
-        // 仅修改值，保留原有单元格样式
         if (!sheet[addr]) {
           sheet[addr] = { v: val, t: typeof val === 'number' ? 'n' : 's' };
         } else {
@@ -196,36 +185,28 @@ const syncTable = async (filename, generateFn, fullLevelPlan) => {
     if (range.e.r < maxRowIdx) range.e.r = maxRowIdx;
     sheet['!ref'] = XLSX.utils.encode_range(range);
 
-    await saveExcelWorkbook(workbook, filename);
-  } catch (error) {
-    console.error(`同步 ${filename} 失败:`, error);
-    throw error;
+    // Delete workbook.Themes to prevent corruption
+    delete workbook.Themes;
+
+    const outBase64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
+    const outBuffer = Buffer.from(outBase64, 'base64');
+    fs.writeFileSync(destPath, outBuffer);
+    
+    console.log('Original size:', buffer.length);
+    console.log('Synced size:', outBuffer.length);
+    
+    // Check themes size
+    const workbookCheck = XLSX.read(new Uint8Array(outBuffer), {
+      type: 'array',
+      cellStyles: true,
+      cellNF: true,
+      cellComments: true
+    });
+    console.log('Themes stringified size:', JSON.stringify(workbookCheck.Themes || {}).length);
+    
+  } catch (err) {
+    console.error('Error running test:', err);
   }
 };
 
-/**
- * 同步 StageTable
- */
-export const syncStageTable = (fullLevelPlan) => {
-  return syncTable('StageTable.xlsx', generateStageTableData, fullLevelPlan);
-};
-
-/**
- * 同步 StageStepTable
- */
-export const syncStageStepTable = (fullLevelPlan) => {
-  return syncTable('StageStepTable.xlsx', generateStageStepData, fullLevelPlan);
-};
-
-/**
- * 一键同步所有规划表
- */
-export const syncAllLevelTables = async (fullLevelPlan) => {
-  try {
-    await syncStageTable(fullLevelPlan);
-    await syncStageStepTable(fullLevelPlan);
-    alert('表格精准同步成功 (Stage & StageStep)！其他非目标列配置已保留。');
-  } catch (e) {
-    alert('同步过程出现错误，请检查控制台。');
-  }
-};
+runTest();

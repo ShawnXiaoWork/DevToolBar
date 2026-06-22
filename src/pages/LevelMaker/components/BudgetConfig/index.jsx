@@ -68,6 +68,16 @@ const BudgetConfig = ({ state, dispatch, previewRange, setPreviewRange }) => {
             <p>第1层关卡的起始总战力值</p>
           </div>
           <div className="param-item">
+            <label>起始倍率 (StartMultiplier)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={levelConfig.initialMultiplier}
+              onChange={(e) => dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { initialMultiplier: Number(e.target.value) } })}
+            />
+            <p>控制起始难度的系数，默认 1.0 (可以设置不从1开始)</p>
+          </div>
+          <div className="param-item">
             <label>难度因子 (DifficultyFactor)</label>
             <input
               type="number"

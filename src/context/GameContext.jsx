@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import { DEFAULT_LEVEL_CONFIG } from '../config/defaultConfig';
 
 const GameContext = createContext();
 
@@ -106,34 +107,20 @@ const initialState = {
   // 兵种库 (游戏制作辅助)
   units: [],
   // 关卡平衡配置
-  levelConfig: {
-    baseScore: 50000,
-    difficultyFactor: 0.2,
-    spikes: Array.from({ length: 20 }, (_, i) => {
-      const level = (i + 1) * 10;
-      const chapter = i + 1;
-      const isMajorChapter = chapter % 5 === 0;
-      return {
-        level,
-        hpMultiplier: isMajorChapter ? 1.4 : 1.2,
-        atkMultiplier: isMajorChapter ? 1.6 : 1.3,
-        type: 'peak',
-        note: isMajorChapter ? `第 ${chapter / 5} 章节终极 Boss` : `第 ${chapter} 阶段精英战`
-      };
-    }).concat(Array.from({ length: 20 }, (_, i) => ({
-      level: (i + 1) * 10,
-      hpMultiplier: 1.1,
-      atkMultiplier: 1.1,
-      type: 'step',
-      note: `第 ${i + 1} 章节难度台阶`
-    })))
-  }
+  levelConfig: DEFAULT_LEVEL_CONFIG
 };
 
 function gameReducer(state, action) {
   switch (action.type) {
     case 'IMPORT_STATE':
-      return { ...initialState, ...action.payload };
+      return { 
+        ...initialState, 
+        ...action.payload,
+        levelConfig: {
+          ...initialState.levelConfig,
+          ...(action.payload.levelConfig || {})
+        }
+      };
     case 'UPDATE_PROJECT_NAME':
       return { ...state, projectName: action.payload };
     case 'UPDATE_BASE_SETTINGS':
@@ -266,7 +253,10 @@ export const GameProvider = ({ children }) => {
             ...initialState,
             ...parsed,
             units: parsed.units || initialState.units,
-            levelConfig: parsed.levelConfig || initialState.levelConfig
+            levelConfig: {
+              ...initialState.levelConfig,
+              ...(parsed.levelConfig || {})
+            }
           }
         });
       } catch (e) {

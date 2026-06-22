@@ -19,6 +19,13 @@ import LevelAnalysis from './components/LevelAnalysis';
 // 自定义 Hooks
 import { useLevelPlanning } from './hooks/useLevelPlanning';
 import { generateMatrixUnits } from './utils/planningUtils';
+import {
+  DEFAULT_ROLE_WEIGHTS,
+  DEFAULT_ROSTER_TEMPLATES,
+  DEFAULT_VALIDATION_CONFIG,
+  DEFAULT_DERIVATION_PARAMS,
+  DEFAULT_MATRIX_CONFIG
+} from '../../config/defaultConfig';
 
 const LevelMaker = () => {
   const { state, dispatch } = useGame();
@@ -28,45 +35,12 @@ const LevelMaker = () => {
   const [previewLevel, setPreviewLevel] = useState(1);
   const [previewRange, setPreviewRange] = useState(200);
   
-  const [roleWeights, setRoleWeights] = useState({
-    0: { hp: 1.6, atk: 0.4, cc: 0, atkSpeed: 0.8, atkRange: 100, detRange: 200 },
-    1: { hp: 1.0, atk: 1.0, cc: 0, atkSpeed: 1.2, atkRange: 100, detRange: 200 },
-    2: { hp: 0.5, atk: 1.5, cc: 0, atkSpeed: 2.0, atkRange: 600, detRange: 700 },
-    3: { hp: 0.7, atk: 0.6, cc: 0.7, atkSpeed: 1.5, atkRange: 400, detRange: 500 }
-  });
-
-  const [rosterTemplates, setRosterTemplates] = useState([
-    { id: 't1', name: '均衡阵型', 0: 0.2, 1: 0.3, 2: 0.4, 3: 0.1 },
-    { id: 't2', name: '高压阵型', 0: 0.1, 1: 0.0, 2: 0.8, 3: 0.1 },
-    { id: 't3', name: '绞肉机阵型', 0: 0.0, 1: 0.7, 2: 0.0, 3: 0.3 }
-  ]);
-
+  const [roleWeights, setRoleWeights] = useState(DEFAULT_ROLE_WEIGHTS);
+  const [rosterTemplates, setRosterTemplates] = useState(DEFAULT_ROSTER_TEMPLATES);
   const [activeTemplateId, setActiveTemplateId] = useState('t1');
-
-  const [validationConfig, setValidationConfig] = useState({
-    expectedDPS: 100,
-    targetDuration: 60,
-    maxDensity: 50,
-    minDensity: 3
-  });
-
-  const [derivationParams, setDerivationParams] = useState({
-    baseHp: 50,
-    baseAtk: 20,
-    baseSpd: 75,
-    baseSkillPower: 0,
-    targetRole: 0,
-    unitName: '衍生单位'
-  });
-
-  const [matrixConfig, setMatrixConfig] = useState({
-    totalLevels: 200,
-    updateFrequency: 5,
-    randomness: 0.2,
-    roleDistribution: { 0: 0.2, 1: 0.25, 2: 0.4, 3: 0.15 },
-    bossFrequency: 5,
-    minBossPerLevel: 2
-  });
+  const [validationConfig, setValidationConfig] = useState(DEFAULT_VALIDATION_CONFIG);
+  const [derivationParams, setDerivationParams] = useState(DEFAULT_DERIVATION_PARAMS);
+  const [matrixConfig, setMatrixConfig] = useState(DEFAULT_MATRIX_CONFIG);
 
   // 初始启动：如果兵种库为空，自动生成一版数据
   React.useEffect(() => {

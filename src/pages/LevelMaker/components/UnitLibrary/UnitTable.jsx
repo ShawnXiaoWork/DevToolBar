@@ -60,11 +60,11 @@ const UnitTable = ({ units, unitFilter, toggleSort, onEdit, onDelete }) => {
             </span>
             <span style={{ fontWeight: '600', color: '#fff' }}>{unit.name}</span>
             <span className="badge" style={{
-              background: unit.armyTag === 9 ? 'rgba(255, 171, 64, 0.2)' : 'rgba(124, 77, 255, 0.2)',
-              color: unit.armyTag === 9 ? '#FFAB40' : '#B39DDB',
-              fontSize: '0.7rem'
+              background: unit.armyTag >= 20 ? 'rgba(255, 171, 64, 0.2)' : 'rgba(124, 77, 255, 0.2)',
+              color: unit.armyTag >= 20 ? '#FFAB40' : '#B39DDB',
+              border: 'none'
             }}>
-              {unit.armyTag === 9 ? 'Boss' : `Tier ${unit.armyTag || 1}`}
+              {unit.armyTag >= 20 ? 'Boss' : `Tier ${unit.armyTag || 1}`}
             </span>
             <span style={{ color: '#FF5252' }}>{unit.hp}</span>
             <span style={{ color: '#FFAB40' }}>{unit.atk}</span>

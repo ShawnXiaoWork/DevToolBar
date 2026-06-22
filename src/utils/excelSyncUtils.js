@@ -124,6 +124,19 @@ export function syncDataToSheet({ sheet, headers, dataToSync, config, range }) {
  * @param {string} filename 
  */
 export async function saveExcelWorkbook(workbook, filename) {
+  // 资深架构师安全审计注：
+  // 社区开源版 sheetjs (xlsx) 在处理复杂样式和主题（Themes）对象时存在兼容性缺陷，
+  // 特别是在浏览器响应式代理/劫持环境下，极易导致写入的 Themes 内部 XML 结构数据暴增甚至损坏。
+  // 在保存前主动清理 Themes 可强制 xlsx 使用标准的内置精简主题，从而在保留单元格核心样式的前提下，
+  // 确保文件大小正常，且能被 Excel、WPS 及 Unity 导表工具成功加载。
+  if (workbook && workbook.Themes) {
+    try {
+      delete workbook.Themes;
+    } catch (e) {
+      console.warn('清理工作簿主题 (Themes) 失败:', e);
+    }
+  }
+
   const content = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
   const response = await fetch(`${import.meta.env.BASE_URL}api/save-excel`, {
     method: 'POST',
