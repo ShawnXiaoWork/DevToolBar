@@ -229,3 +229,149 @@ export const syncAllLevelTables = async (fullLevelPlan) => {
     alert('同步过程出现错误，请检查控制台。');
   }
 };
+
+/**
+ * 根据曲线公式计算奖励数量
+ */
+export const calculateRewardQuantity = (level, formula, params, startLevel = 1) => {
+  const base = Number(params.base || 0);
+  const relLevel = Math.max(1, level - startLevel + 1);
+  const relSteps = Math.max(0, level - startLevel);
+  switch (formula) {
+    case 'power': {
+      const power = Number(params.power || 1);
+      return Math.round(base * Math.pow(relLevel, power));
+    }
+    case 'linear': {
+      const coeff = Number(params.coeff || 0);
+      return Math.round(base * (1 + coeff * relSteps));
+    }
+    case 'exponential': {
+      const growthRate = Number(params.growthRate || 1);
+      return Math.round(base * Math.pow(growthRate, relSteps));
+    }
+    default:
+      return base;
+  }
+};
+
+/**
+ * 同步关卡资源投放奖励至 StageTable.xlsx
+ */
+export const syncStageRewardsTable = async (rewardsConfig) => {
+  try {
+    const { workbook, sheet, headers, range } = await loadExcelWorkbook('StageTable.xlsx');
+    
+    const idIdx = headers.indexOf('Id');
+    const stageRewardIdx = headers.indexOf('StageReward');
+    const stageRewardFailIdx = headers.indexOf('StageRewardFail');
+    const stageRewardHardIdx = headers.indexOf('StageRewardHard');
+    const stageRewardFailHardIdx = headers.indexOf('StageRewardFailHard');
+    const stageRewardFirstTimetHardIdx = headers.indexOf('StageRewardFirstTimetHard');
+    const idleReward1Idx = headers.indexOf('IdleReward1');
+
+    if (idIdx === -1) throw new Error('未找到 Id 列，请确认表格结构');
+
+    const fieldsMapping = {
+      'StageReward': stageRewardIdx,
+      'StageRewardFail': stageRewardFailIdx,
+      'StageRewardHard': stageRewardHardIdx,
+      'StageRewardFailHard': stageRewardFailHardIdx,
+      'StageRewardFirstTimetHard': stageRewardFirstTimetHardIdx,
+      'IdleReward1': idleReward1Idx
+    };
+
+    const dataStartRowIdx = 4;
+    
+    for (let r = dataStartRowIdx; r <= range.e.r; r++) {
+      const idCell = sheet[XLSX.utils.encode_cell({ c: idIdx, r })];
+      if (!idCell || idCell.v === undefined) continue;
+      
+      const level = parseInt(idCell.v);
+      if (isNaN(level)) continue;
+
+      Object.entries(fieldsMapping).forEach(([fieldKey, colIdx]) => {
+        if (colIdx === -1) return;
+
+        const rules = rewardsConfig[fieldKey] || [];
+        const rewardsList = [];
+
+        rules.forEach(rule => {
+          const start = Number(rule.range?.[0] ?? 1);
+          const end = Number(rule.range?.[1] ?? 9999);
+          if (level >= start && level <= end) {
+            const qty = calculateRewardQuantity(level, rule.formula, rule.params, start);
+            if (qty > 0) {
+              rewardsList.push([Number(rule.itemId), qty, Number(rule.prob || 100)]);
+            }
+          }
+        });
+
+        const formattedStr = JSON.stringify(rewardsList);
+        const cellAddr = XLSX.utils.encode_cell({ c: colIdx, r });
+
+        if (!sheet[cellAddr]) {
+          sheet[cellAddr] = { v: formattedStr, t: 's' };
+        } else {
+          sheet[cellAddr].v = formattedStr;
+          sheet[cellAddr].t = 's';
+        }
+      });
+    }
+
+    await saveExcelWorkbook(workbook, 'StageTable.xlsx');
+    return { status: 'OK', message: '关卡资源奖励成功同步至 StageTable.xlsx！' };
+  } catch (error) {
+    console.error('syncStageRewardsTable error:', error);
+    throw error;
+  }
+};
+
+/**
+ * 解析关卡奖励字符串，兼容双层及三层括号
+ * 格式 [[[id, count, prob], ...]] 或 [[id, count, prob], ...]
+ */
+export const parseRewardString = (str) => {
+  if (!str) return [];
+  const cleaned = String(str).trim();
+  if (cleaned === '[[[]]]' || cleaned === '[[[]]]' || cleaned === '[]' || cleaned === '') {
+    return [];
+  }
+  try {
+    let parsed = JSON.parse(cleaned);
+    
+    // 如果是三层括号形式 [[[1, 1200, 100]]]，转换为双层
+    if (Array.isArray(parsed) && parsed.length > 0 && Array.isArray(parsed[0]) && Array.isArray(parsed[0][0])) {
+      parsed = parsed[0];
+    }
+    
+    if (Array.isArray(parsed)) {
+      return parsed.map(item => {
+        if (!Array.isArray(item)) return null;
+        return {
+          itemId: String(item[0]),
+          count: Number(item[1] || 1),
+          prob: Number(item[2] ?? 100)
+        };
+      }).filter(Boolean);
+    }
+  } catch (e) {
+    // 降级正则解析
+    const result = [];
+    const matches = cleaned.match(/\[\d+,\d+(?:,\d+)?\]/g);
+    if (matches) {
+      matches.forEach(m => {
+        const parts = m.replace(/[\[\]]/g, '').split(',').map(Number);
+        if (parts.length >= 2) {
+          result.push({
+            itemId: String(parts[0]),
+            count: parts[1],
+            prob: parts[2] ?? 100
+          });
+        }
+      });
+    }
+    return result;
+  }
+  return [];
+};
