@@ -108,7 +108,17 @@ export const useLevelPlanning = (state, config) => {
         }
       });
 
-      return { level, budget, selected, hpCoeff, atkCoeff, isBossLevel, targetTier };
+      return { 
+        level, 
+        budget, 
+        selected, 
+        hpCoeff, 
+        atkCoeff, 
+        isBossLevel, 
+        targetTier,
+        // 资深架构师提示：注入难度预算配置中的波次间隔，若未配置则默认为 30 秒
+        waveInterval: levelConfig.waveInterval !== undefined ? levelConfig.waveInterval : 30
+      };
     });
   }, [state.units, levelConfig, previewRange, activeTemplateId, rosterTemplates, matrixConfig]);
 

@@ -88,6 +88,22 @@ const BudgetConfig = ({ state, dispatch, previewRange, setPreviewRange }) => {
             <p>数值越高，后期关卡难度飙升越快</p>
           </div>
           <div className="param-item">
+            <label>波次间隔 (WaveInterval)</label>
+            <input
+              type="number"
+              min="0"
+              max="3600"
+              value={levelConfig.waveInterval !== undefined ? levelConfig.waveInterval : 30}
+              onChange={(e) => {
+                const val = e.target.value === '' ? 0 : Number(e.target.value);
+                // 资深全栈架构师安全审计：限制波次间隔在 [0, 3600] 范围内，防止异常大值或负数溢出
+                const sanitized = Math.max(0, Math.min(3600, val));
+                dispatch({ type: 'UPDATE_LEVEL_CONFIG', payload: { waveInterval: sanitized } });
+              }}
+            />
+            <p>关卡中每波敌人的默认开始间隔 (秒)</p>
+          </div>
+          <div className="param-item">
             <label>预测关卡总数 (Preview Levels)</label>
             <input
               type="number"

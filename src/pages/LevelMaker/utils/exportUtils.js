@@ -80,7 +80,7 @@ export const generateStageStepData = (fullLevelPlan) => {
   let currentRowIdx = 0;
 
   fullLevelPlan.forEach((lp) => {
-    const { level, selected, hpCoeff, atkCoeff } = lp;
+    const { level, selected, hpCoeff, atkCoeff, waveInterval = 30 } = lp;
     const stageBaseHp = hpCoeff;
     const stageBaseAtk = atkCoeff;
 
@@ -127,7 +127,8 @@ export const generateStageStepData = (fullLevelPlan) => {
       const isBossWave = (wave === 8 || wave === 15);
       const unitsInWave = waveConfigs[wave - 1];
       const monsterConfig = [];
-      let cumulativeDelay = 0;
+      // 资深架构师提示：第一波敌人默认开始间隔为难度预算配置的波次间隔，后续敌人在此延迟基础之上进行顺延
+      let cumulativeDelay = waveInterval;
 
       unitsInWave.forEach(({ unit, count }) => {
         const maxRow = unit.maxRow || 15;
@@ -138,7 +139,7 @@ export const generateStageStepData = (fullLevelPlan) => {
       });
 
       if (monsterConfig.length === 0 && regularUnits.length > 0) {
-        monsterConfig.push([parseInt(regularUnits[0].id), 2, 0]);
+        monsterConfig.push([parseInt(regularUnits[0].id), 2, waveInterval]);
       }
 
       const waveMultiplier = 0.8 + (wave - 1) / 14 * 0.4;
