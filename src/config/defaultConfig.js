@@ -10,7 +10,7 @@ export const DEFAULT_LEVEL_CONFIG = {
   baseScore: 50000,           // 关卡基准分数
   initialMultiplier: 1,       // 起始难度倍率
   difficultyFactor: 0.2,      // 后期难度膨胀因子
-  waveInterval: 30,           // 关卡中每波敌人的默认开始间隔 (秒)
+  waveInterval: 5,           // 关卡中每波敌人的默认开始间隔 (秒)
   spikes: Array.from({ length: 20 }, (_, i) => {
     const level = (i + 1) * 10;
     const chapter = i + 1;
@@ -35,7 +35,7 @@ export const DEFAULT_LEVEL_CONFIG = {
 // 2. 兵种属性生成基准参数 (Derivation Params)
 // ----------------------------------------------------
 export const DEFAULT_DERIVATION_PARAMS = {
-  baseHp: 30,                 // 基础生命
+  baseHp: 10,                 // 基础生命
   baseAtk: 15,                // 基础攻击
   baseSpd: 75,                // 基础移动速度
   baseSkillPower: 0,          // 基础技能强度

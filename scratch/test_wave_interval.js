@@ -81,8 +81,8 @@ const generateStageStepData = (fullLevelPlan) => {
       const isBossWave = (wave === 8 || wave === 15);
       const unitsInWave = waveConfigs[wave - 1];
       const monsterConfig = [];
-      // 资深架构师提示：第一波敌人默认开始间隔为难度预算配置的波次间隔，后续敌人在此延迟基础之上进行顺延
-      let cumulativeDelay = waveInterval;
+      // 资深架构师提示：第一波（wave === 1）敌人的默认开始间隔为 0，后续波次（wave > 1）在此延迟基础之上进行顺延
+      let cumulativeDelay = wave === 1 ? 0 : waveInterval;
 
       unitsInWave.forEach(({ unit, count }) => {
         const maxRow = unit.maxRow || 15;
@@ -93,7 +93,7 @@ const generateStageStepData = (fullLevelPlan) => {
       });
 
       if (monsterConfig.length === 0 && regularUnits.length > 0) {
-        monsterConfig.push([parseInt(regularUnits[0].id), 2, waveInterval]);
+        monsterConfig.push([parseInt(regularUnits[0].id), 2, wave === 1 ? 0 : waveInterval]);
       }
 
       const waveMultiplier = 0.8 + (wave - 1) / 14 * 0.4;
@@ -166,10 +166,23 @@ function runTest() {
   const firstEnemy = monsterConfig[0];
   const firstEnemyDelay = firstEnemy[2];
 
-  console.log(`第一个敌人的生成延迟参数为: ${firstEnemyDelay} 秒`);
+  console.log(`第一波第一个敌人的生成延迟参数为: ${firstEnemyDelay} 秒`);
 
-  if (firstEnemyDelay !== 45) {
-    throw new Error(`预期第一个敌人的生成延迟为 45，实际为: ${firstEnemyDelay}`);
+  if (firstEnemyDelay !== 0) {
+    throw new Error(`预期第一波第一个敌人的生成延迟为 0，实际为: ${firstEnemyDelay}`);
+  }
+
+  // 检查第二波的 Monster 配置
+  const secondWaveRow = resultRows[1];
+  const secondMonsterConfig = JSON.parse(secondWaveRow[STEP_COL.MONSTER]);
+  console.log('第二波 Monster 配置为:', secondMonsterConfig);
+
+  const secondEnemy = secondMonsterConfig[0];
+  const secondEnemyDelay = secondEnemy[2];
+  console.log(`第二波第一个敌人的生成延迟参数为: ${secondEnemyDelay} 秒`);
+
+  if (secondEnemyDelay !== 45) {
+    throw new Error(`预期第二波第一个敌人的生成延迟为 45，实际为: ${secondEnemyDelay}`);
   }
 
   // 同时校验 Advance 列是否保持为 0
@@ -179,7 +192,7 @@ function runTest() {
     throw new Error(`预期 Advance 列仍为 0，但实际为: ${advanceVal}`);
   }
 
-  console.log('测试通过！成功验证第一个敌人的生成延迟等于 waveInterval 配置且 Advance 保持原样。');
+  console.log('测试通过！成功验证每关第一波敌人的生成延迟默认刷新时间为 0，而后续波次为 waveInterval 配置 (45) 且 Advance 保持原样。');
 }
 
 try {
