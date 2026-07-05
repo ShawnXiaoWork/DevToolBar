@@ -12,7 +12,10 @@ import * as XLSX from 'xlsx';
 export async function loadExcelWorkbook(filename) {
   try {
     const response = await fetch(`${import.meta.env.BASE_URL}api/read-excel?filename=${filename}`);
-    if (!response.ok) throw new Error(`Failed to read ${filename}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || `Failed to read ${filename}`);
+    }
     const buffer = await response.arrayBuffer();
     const workbook = XLSX.read(new Uint8Array(buffer), {
       type: 'array',
@@ -39,10 +42,10 @@ export async function loadExcelWorkbook(filename) {
  * @param {any} params.sheet 工作表对象
  * @param {string[]} params.headers 表头数组
  * @param {Array} params.dataToSync 要同步的数据数组 (对象数组)
- * @param {Object} params.config 配置项 { idField, dataStartRow, templateId, mapping }
+ * @param {Object} params.config 配置项 { idField, dataIdField, dataStartRow, templateId, mapping }
  */
 export function syncDataToSheet({ sheet, headers, dataToSync, config, range }) {
-  const { idField = 'Id', dataStartRow = 4, templateId = 1001, mapping = {} } = config;
+  const { idField = 'Id', dataIdField = idField, dataStartRow = 4, templateId = 1001, mapping = {} } = config;
   
   const idIdx = headers.indexOf(idField);
   if (idIdx === -1) {
@@ -68,7 +71,7 @@ export function syncDataToSheet({ sheet, headers, dataToSync, config, range }) {
 
   // 2. 遍历同步数据
   dataToSync.forEach(item => {
-    const itemId = String(item[idField] || '');
+    const itemId = String(item[dataIdField] ?? item[idField] ?? '');
     let targetRowIdx = idToRowMap.get(itemId);
 
     // 如果是新条目，克隆模板行
@@ -145,7 +148,8 @@ export async function saveExcelWorkbook(workbook, filename) {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to save ${filename}`);
+    const errorText = await response.text();
+    throw new Error(errorText || `Failed to save ${filename}`);
   }
   return await response.json();
 }

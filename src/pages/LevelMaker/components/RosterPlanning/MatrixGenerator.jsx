@@ -1,9 +1,8 @@
 import React from 'react';
 import { BarChart3, Zap } from 'lucide-react';
-import { ROLE_LABELS, ROLE_NAME_POOLS, BOSS_PREFIXES, ROLE_SYMBOLS } from '../../utils/constants';
-import { getNextIdForRole } from '../../utils/planningUtils';
+import { getNextIdForRole, generateMatrixUnits } from '../../utils/planningUtils';
 
-const MatrixGenerator = ({ matrixConfig, setMatrixConfig, roleWeights, derivationParams, dispatch }) => {
+const MatrixGenerator = ({ matrixConfig, setMatrixConfig, roleWeights, derivationParams, dispatch, state, namesPool }) => {
   return (
     <div className="planning-card glass" style={{ border: '1px solid var(--accent-primary)', boxShadow: '0 0 20px rgba(124, 77, 255, 0.1)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -62,7 +61,7 @@ const MatrixGenerator = ({ matrixConfig, setMatrixConfig, roleWeights, derivatio
         </div>
 
         <button className="btn-primary" style={{ height: '50px', fontSize: '1rem' }} onClick={() => {
-          const newUnits = generateMatrixUnits(matrixConfig, roleWeights, derivationParams, state.units);
+          const newUnits = generateMatrixUnits(matrixConfig, roleWeights, derivationParams, state?.units || [], namesPool);
 
           if (confirm(`系统即将生成 ${newUnits.length} 个兵种并加入库中，是否继续？`)) {
             dispatch({ type: 'IMPORT_UNITS', payload: newUnits });

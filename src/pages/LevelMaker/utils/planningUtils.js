@@ -1,4 +1,4 @@
-import { ROLE_ID_RANGES, ROLE_COMMON_SKILLS } from './constants';
+import { ROLE_ID_RANGES, ROLE_COMMON_SKILLS } from './constants.js';
 
 /**
  * 计算单个兵种的综合战力评分 (Power Score)
@@ -77,10 +77,11 @@ export const getTargetTier = (level) => {
 /**
  * 核心：矩阵生成算法 (封装版)
  */
-export const generateMatrixUnits = (config, roleWeights, derivationParams, existingUnits = []) => {
+export const generateMatrixUnits = (config, roleWeights, derivationParams, existingUnits = [], namesPool = null) => {
   const { totalLevels, updateFrequency, randomness, roleDistribution, bossFrequency } = config;
   const totalTypes = Math.ceil(totalLevels / updateFrequency);
   const newUnits = [];
+  const usedNames = new Set(existingUnits.map(unit => unit.name).filter(Boolean));
 
   const ROLE_LABELS = { 0: 'Tank', 1: 'Warrior', 2: 'DPS', 3: 'CC' };
   const ROLE_SYMBOLS = { 0: '🛡️', 1: '⚔️', 2: '🎯', 3: '🌀' };
@@ -90,6 +91,34 @@ export const generateMatrixUnits = (config, roleWeights, derivationParams, exist
     1: ['剑士', '狂战士', '恶魔猎手', '骷髅兵', '影舞者', '先遣兵', '处刑人', '狼人', '武士', '角斗士'],
     2: ['希尔瓦娜斯', '寒冰射手', '狙击手', '火枪手', '巫妖', '法术大师', '游侠', '投石车', '暗影牧师', '元素使'],
     3: ['寒冰法师', '术士', '德鲁伊', '蜘蛛女王', '萨满', '催眠者', '粘液怪', '沉默者', '药剂师', '先知']
+  };
+
+  // 职能到 Style 的映射 (0: 步兵, 1: 弓箭手, 3: 骑兵, 4: 长枪兵)
+  const ROLE_TO_STYLE = {
+    0: 0, // Tank -> Infantry
+    1: 4, // Warrior -> Pikeman
+    2: 1, // DPS -> Archer
+    3: 3  // CC -> Cavalry
+  };
+
+  const pickName = (pool, buildDisplayName) => {
+    const names = pool.length > 0 ? pool : ['未知单位'];
+    const startIdx = Math.floor(Math.random() * names.length);
+
+    for (let offset = 0; offset < names.length; offset++) {
+      const candidate = names[(startIdx + offset) % names.length];
+      const displayName = buildDisplayName(candidate);
+      if (!usedNames.has(displayName)) {
+        return candidate;
+      }
+    }
+
+    const baseName = names[startIdx];
+    let suffix = 2;
+    while (usedNames.has(buildDisplayName(`${baseName}-${suffix}`))) {
+      suffix++;
+    }
+    return `${baseName}-${suffix}`;
   };
 
   Object.keys(roleDistribution).forEach(roleId => {
@@ -108,16 +137,27 @@ export const generateMatrixUnits = (config, roleWeights, derivationParams, exist
       const hpMut = 1 + (Math.random() * 2 - 1) * randomness;
       const atkMut = 1 + (Math.random() * 2 - 1) * randomness;
 
-      const pool = ROLE_NAME_POOLS[role] || ['未知单位'];
-      const baseName = pool[Math.floor(Math.random() * pool.length)];
+      // 计算 Style 与 Qua (品质 = tier + 2)
+      const style = ROLE_TO_STYLE[role] !== undefined ? ROLE_TO_STYLE[role] : 0;
+      const qua = tier + 2;
+
+      const excelNames = namesPool && namesPool[style] && namesPool[style][qua];
       const bossPrefix = isBoss ? BOSS_PREFIXES[Math.floor(Math.random() * BOSS_PREFIXES.length)] : '';
       const symbol = ROLE_SYMBOLS[role] || '';
+      const buildDisplayName = (candidateName) => `${bossPrefix}${candidateName}${symbol} T${tier}`;
+      const baseName = pickName(
+        excelNames && excelNames.length > 0 ? excelNames : (ROLE_NAME_POOLS[role] || ['未知单位']),
+        buildDisplayName
+      );
+      const displayName = buildDisplayName(baseName);
 
       const finalId = getNextIdForRole(isBoss ? 'Boss' : role, existingUnits, newUnits);
 
       newUnits.push({
         id: finalId,
-        name: `${bossPrefix}${baseName}${symbol} T${tier}`,
+        name: displayName,
+        style: style,
+        qua: qua,
         hp: Math.round(derivationParams.baseHp * weights.hp * tierMultiplier * hpMut * bossMultiplier),
         atk: Math.round(derivationParams.baseAtk * weights.atk * tierMultiplier * atkMut * bossAtkMultiplier),
         atkSpeed: Number((weights.atkSpeed * (0.9 + Math.random() * 0.2)).toFixed(2)),
@@ -132,6 +172,7 @@ export const generateMatrixUnits = (config, roleWeights, derivationParams, exist
         spawnRates: isBoss ? 1.0 : 0.4,
         spawnWeight: isBoss ? 10 : 50
       });
+      usedNames.add(displayName);
     }
   });
 

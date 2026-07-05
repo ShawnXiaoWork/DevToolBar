@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Download, Upload } from 'lucide-react';
+import { Download, Upload, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import PlanRow from './PlanRow';
 import { syncAllLevelTables } from '../../utils/exportUtils';
-import { RefreshCw } from 'lucide-react';
 
-const DeploymentPlan = ({ fullLevelPlan, previewRange }) => {
+const DeploymentPlan = ({ fullLevelPlan, previewRange, units, roleWeights, derivationParams }) => {
+  const [isSyncing, setIsSyncing] = useState(false);
+
   const exportToExcel = () => {
     const data = fullLevelPlan.map(lp => ({
       '关卡': lp.level,
@@ -35,6 +36,31 @@ const DeploymentPlan = ({ fullLevelPlan, previewRange }) => {
     a.click();
   };
 
+  const handleSyncAllTables = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+
+    try {
+      const result = await syncAllLevelTables({
+        fullLevelPlan,
+        units,
+        roleWeights,
+        derivationParams
+      });
+      alert(`同步成功：${result.syncedTables.join('、')} 已更新。`);
+    } catch (error) {
+      const failedText = error.failedTables
+        ? error.failedTables.map(item => `${item.table}: ${item.message}`).join('\n')
+        : (error.message || '未知错误');
+      const syncedText = error.syncedTables?.length
+        ? `\n已成功同步：${error.syncedTables.join('、')}`
+        : '';
+      alert(`同步未全部完成，请检查以下异常：\n${failedText}${syncedText}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -47,8 +73,13 @@ const DeploymentPlan = ({ fullLevelPlan, previewRange }) => {
           <p>基于当前难度曲线与兵种库，系统已自动计算并分配了前 {previewRange} 关的敌军阵容。</p>
         </div>
         <div className="plan-actions" style={{ display: 'flex', gap: '0.75rem' }}>
-          <button className="btn-primary" style={{ background: '#4CAF50' }} onClick={() => syncAllLevelTables(fullLevelPlan)}>
-            <RefreshCw size={16} /> 一键同步所有配置表 (Stage & Step)
+          <button
+            className="btn-primary"
+            style={{ background: '#4CAF50' }}
+            onClick={handleSyncAllTables}
+            disabled={isSyncing}
+          >
+            <RefreshCw size={16} /> {isSyncing ? '同步中...' : '一键同步所有配置表'}
           </button>
           <button className="btn-outline" onClick={exportToExcel}>
             <Download size={16} /> 导出汇总规划 (Excel)

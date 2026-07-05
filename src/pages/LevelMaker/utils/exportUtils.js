@@ -4,7 +4,8 @@
  */
 
 import * as XLSX from 'xlsx';
-import { loadExcelWorkbook, saveExcelWorkbook } from '../../../utils/excelSyncUtils';
+import { loadExcelWorkbook, saveExcelWorkbook } from '../../../utils/excelSyncUtils.js';
+import { syncArmyTable } from './armySyncUtils.js';
 
 /**
  * 设计 15 波次的权重曲线 (数值策划预设)
@@ -167,13 +168,11 @@ export const generateStageStepData = (fullLevelPlan) => {
  */
 const syncTable = async (filename, generateFn, fullLevelPlan) => {
   try {
-    const { workbook, sheet } = await loadExcelWorkbook(filename).catch(async () => {
-      // 如果读取失败，创建一个包含基础表头的空表
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet([['#'], ['#'], ['#'], ['#']]);
-      XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-      return { workbook: wb, sheet: ws };
-    });
+    if (!Array.isArray(fullLevelPlan) || fullLevelPlan.length === 0) {
+      throw new Error('没有可同步的关卡规划数据');
+    }
+
+    const { workbook, sheet } = await loadExcelWorkbook(filename);
     
     const rowsToUpdate = generateFn(fullLevelPlan); // { relativeRowIdx: { colIndex: value } }
     const dataStartRowIdx = 4;
@@ -197,7 +196,10 @@ const syncTable = async (filename, generateFn, fullLevelPlan) => {
     if (range.e.r < maxRowIdx) range.e.r = maxRowIdx;
     sheet['!ref'] = XLSX.utils.encode_range(range);
 
-    await saveExcelWorkbook(workbook, filename);
+    const result = await saveExcelWorkbook(workbook, filename);
+    if (!result || result.status !== 'OK') {
+      throw new Error(result?.message || `${filename} 保存失败`);
+    }
   } catch (error) {
     console.error(`同步 ${filename} 失败:`, error);
     throw error;
@@ -221,14 +223,67 @@ export const syncStageStepTable = (fullLevelPlan) => {
 /**
  * 一键同步所有规划表
  */
-export const syncAllLevelTables = async (fullLevelPlan) => {
-  try {
-    await syncStageTable(fullLevelPlan);
-    await syncStageStepTable(fullLevelPlan);
-    alert('表格精准同步成功 (Stage & StageStep)！其他非目标列配置已保留。');
-  } catch (e) {
-    alert('同步过程出现错误，请检查控制台。');
+export class LevelTableSyncError extends Error {
+  constructor({ failedTables, syncedTables }) {
+    super(`同步失败：${failedTables.map(item => `${item.table} (${item.message})`).join('；')}`);
+    this.name = 'LevelTableSyncError';
+    this.failedTables = failedTables;
+    this.syncedTables = syncedTables;
   }
+}
+
+export const syncAllLevelTables = async (options) => {
+  const {
+    fullLevelPlan,
+    units,
+    roleWeights = {},
+    derivationParams = {},
+    syncers = {
+      syncArmyTable,
+      syncStageTable,
+      syncStageStepTable
+    }
+  } = Array.isArray(options) ? { fullLevelPlan: options } : options;
+
+  const tasks = [
+    {
+      table: 'ArmyTable.xlsx',
+      run: () => syncers.syncArmyTable({ units, roleWeights, derivationParams })
+    },
+    {
+      table: 'StageTable.xlsx',
+      run: () => syncers.syncStageTable(fullLevelPlan)
+    },
+    {
+      table: 'StageStepTable.xlsx',
+      run: () => syncers.syncStageStepTable(fullLevelPlan)
+    }
+  ];
+
+  const syncedTables = [];
+  const failedTables = [];
+
+  for (const task of tasks) {
+    try {
+      await task.run();
+      syncedTables.push(task.table);
+    } catch (error) {
+      console.error(`同步 ${task.table} 失败:`, error);
+      failedTables.push({
+        table: task.table,
+        message: error?.message || '未知错误'
+      });
+    }
+  }
+
+  if (failedTables.length > 0) {
+    throw new LevelTableSyncError({ failedTables, syncedTables });
+  }
+
+  return {
+    ok: true,
+    syncedTables
+  };
 };
 
 /**
@@ -356,13 +411,13 @@ export const parseRewardString = (str) => {
         };
       }).filter(Boolean);
     }
-  } catch (e) {
+  } catch {
     // 降级正则解析
     const result = [];
     const matches = cleaned.match(/\[\d+,\d+(?:,\d+)?\]/g);
     if (matches) {
       matches.forEach(m => {
-        const parts = m.replace(/[\[\]]/g, '').split(',').map(Number);
+        const parts = m.replace(/[[\]]/g, '').split(',').map(Number);
         if (parts.length >= 2) {
           result.push({
             itemId: String(parts[0]),

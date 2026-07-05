@@ -6,7 +6,7 @@ import UnitFilters from './UnitFilters';
 import UnitTable from './UnitTable';
 import UnitEditor from './UnitEditor';
 import { calculatePowerScore } from '../../utils/planningUtils';
-import { loadExcelWorkbook, syncDataToSheet, saveExcelWorkbook } from '../../../../utils/excelSyncUtils';
+import { syncArmyTable } from '../../utils/armySyncUtils';
 
 const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
   const [editingUnit, setEditingUnit] = useState(null);
@@ -105,7 +105,9 @@ const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
               armyTag: Number(row.ArmyTag || 11),
               commonSkill: commonSkill,
               maxRow: Number(row.MaxRow || 15),
-              spawnRates: Number(row.SpawnRates || 0.4)
+              spawnRates: Number(row.SpawnRates || 0.4),
+              style: row.Style !== undefined ? Number(row.Style) : 0,
+              qua: row.Qua !== undefined ? Number(row.Qua) : 1
             };
           }).filter(u => u.id && u.name);
           
@@ -312,124 +314,12 @@ const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
 
   const syncToLocal = async (roleWeights, derivationParams) => {
     try {
-      const { workbook, sheet, headers, range } = await loadExcelWorkbook('ArmyTable.xlsx');
-      
-      // 1. 存量数据清洗 (处理 Excel 中 Roles === -1 的残留配置)
-      const rolesColIdx = headers.indexOf('Roles');
-      const hpColIdx = headers.indexOf('Hp');
-      const atkColIdx = headers.indexOf('Attack');
-      const hpFakeColIdx = headers.indexOf('HpFake');
-      const atkFakeColIdx = headers.indexOf('AttackFake');
-      const idColIdx = headers.indexOf('Id');
-      const noteColIdx = headers.indexOf('Note');
-
-      if (rolesColIdx !== -1 && hpColIdx !== -1 && atkColIdx !== -1) {
-        for (let r = 4; r <= range.e.r; r++) {
-          const idAddr = XLSX.utils.encode_cell({ c: idColIdx, r: r });
-          const idVal = sheet[idAddr] ? String(sheet[idAddr].v) : '';
-          if (!idVal || idVal === '1001') continue;
-
-          const rolesAddr = XLSX.utils.encode_cell({ c: rolesColIdx, r: r });
-          const rolesVal = sheet[rolesAddr] ? Number(sheet[rolesAddr].v) : undefined;
-
-          if (rolesVal === -1) {
-            const noteVal = noteColIdx !== -1 && sheet[XLSX.utils.encode_cell({ c: noteColIdx, r: r })] 
-              ? String(sheet[XLSX.utils.encode_cell({ c: noteColIdx, r: r })].v) : '';
-              
-            let bestRole = 1;
-            if (noteVal.match(/盾|甲|巨|熊|象|肉|防/)) {
-              bestRole = 0;
-            } else if (noteVal.match(/弓|法|炮|巫|箭|弩|魔|狙|精/)) {
-              bestRole = 2;
-            } else if (noteVal.match(/刺|医|疗|牧|毒|影|隐|辅/)) {
-              bestRole = 3;
-            }
-
-            const currHp = sheet[XLSX.utils.encode_cell({ c: hpColIdx, r: r })]?.v || derivationParams.baseHp;
-            const roleHpMulti = roleWeights[bestRole]?.hp || 1.0;
-            const roleAtkMulti = roleWeights[bestRole]?.atk || 1.0;
-            
-            // 根据当前HP推算档次
-            const tier = Math.max(1, Math.round(currHp / (derivationParams.baseHp * roleHpMulti)));
-            const finalHp = Math.round(tier * derivationParams.baseHp * roleHpMulti);
-            const finalAtk = Math.round(tier * derivationParams.baseAtk * roleAtkMulti);
-
-            sheet[rolesAddr] = { v: bestRole, t: 'n' };
-            sheet[XLSX.utils.encode_cell({ c: hpColIdx, r: r })] = { v: finalHp, t: 'n' };
-            sheet[XLSX.utils.encode_cell({ c: atkColIdx, r: r })] = { v: finalAtk, t: 'n' };
-            if (hpFakeColIdx !== -1) sheet[XLSX.utils.encode_cell({ c: hpFakeColIdx, r: r })] = { v: finalHp, t: 'n' };
-            if (atkFakeColIdx !== -1) sheet[XLSX.utils.encode_cell({ c: atkFakeColIdx, r: r })] = { v: finalAtk, t: 'n' };
-          }
-        }
-      }
-
-      // 2. 清洗 UI 状态中要同步的数据，防止用老的 ui 状态覆盖掉刚才在 Excel 中清洗好的数据
-      const cleanedUnits = filteredUnits.map(u => {
-        if (u.roles && u.roles[0] === -1) {
-          const noteVal = u.name || '';
-          let bestRole = 1;
-          if (noteVal.match(/盾|甲|巨|熊|象|肉|防/)) {
-            bestRole = 0;
-          } else if (noteVal.match(/弓|法|炮|巫|箭|弩|魔|狙|精/)) {
-            bestRole = 2;
-          } else if (noteVal.match(/刺|医|疗|牧|毒|影|隐|辅/)) {
-            bestRole = 3;
-          }
-
-          const roleHpMulti = roleWeights[bestRole]?.hp || 1.0;
-          const roleAtkMulti = roleWeights[bestRole]?.atk || 1.0;
-          
-          const tier = Math.max(1, Math.round(u.hp / (derivationParams.baseHp * roleHpMulti)));
-          const finalHp = Math.round(tier * derivationParams.baseHp * roleHpMulti);
-          const finalAtk = Math.round(tier * derivationParams.baseAtk * roleAtkMulti);
-
-          return {
-            ...u,
-            roles: [bestRole],
-            hp: finalHp,
-            atk: finalAtk
-          };
-        }
-        return u;
+      const { workbook, sheet, cleanedUnits, saveResult } = await syncArmyTable({
+        units: filteredUnits,
+        roleWeights,
+        derivationParams
       });
-
-      // 3. 将本地数据增量同步至 Sheet
-      const mapping = {
-        'Id': 'id',
-        'Note': 'name',
-        'Name': (u) => `armyName.${u.id}`,
-        'Description': (u) => `armyDescription.${u.id}`,
-        'ArmyTag': (u) => u.armyTag || 0,
-        'Hp': 'hp',
-        'HpFake': 'hp',
-        'Attack': 'atk',
-        'AttackFake': 'atk',
-        'AttackFreq': (u) => u.atkSpeed || 1.0,
-        'Speed': (u) => u.spd || 75,
-        'AttackRange': (u) => u.atkRange || 100,
-        'FindRange': (u) => u.detRange || 200,
-        'Race': (u) => Array.isArray(u.roles) ? u.roles.join('|') : u.roles,
-        'Roles': (u) => (u.roles && u.roles.length > 0) ? Number(u.roles[0]) : 0,
-        'Icon': (u) => `m${u.id}`,
-        'Prefab': (u) => u.prefab || 10001,
-        'SkillIds': (u) => `[${u.commonSkill || 10010}]`,
-        'Cost': (u) => calculatePowerScore(u)
-      };
-
-      syncDataToSheet({
-        sheet,
-        headers,
-        dataToSync: cleanedUnits,
-        range,
-        config: {
-          idField: 'Id',
-          mapping: mapping,
-          templateId: 1001
-        }
-      });
-
-      const result = await saveExcelWorkbook(workbook, 'ArmyTable.xlsx');
-      alert(result.message || '本地 ArmyTable.xlsx 同步成功！');
+      alert(saveResult.message || '本地 ArmyTable.xlsx 同步成功！');
       
       // 更新本地状态
       setCurrentWorkbook(workbook);

@@ -21,6 +21,7 @@ import RewardConfig from './components/RewardConfig';
 // 自定义 Hooks
 import { useLevelPlanning } from './hooks/useLevelPlanning';
 import { generateMatrixUnits } from './utils/planningUtils';
+import { loadExcelWorkbook } from '../../utils/excelSyncUtils';
 import {
   DEFAULT_ROLE_WEIGHTS,
   DEFAULT_ROSTER_TEMPLATES,
@@ -44,13 +45,80 @@ const LevelMaker = () => {
   const [derivationParams, setDerivationParams] = useState(DEFAULT_DERIVATION_PARAMS);
   const [matrixConfig, setMatrixConfig] = useState(DEFAULT_MATRIX_CONFIG);
 
-  // 初始启动：如果兵种库为空，自动生成一版数据
+  // 动态加载的名字池状态与初始化标志
+  const [namesPool, setNamesPool] = useState(null);
+  const [namesInitialized, setNamesInitialized] = useState(false);
+
+  // 动态加载 public/names.xlsx 并转换为 namesPool 结构
   React.useEffect(() => {
-    if (state.units.length === 0) {
-      const initialUnits = generateMatrixUnits(matrixConfig, roleWeights, derivationParams, []);
+    async function initNamesPool() {
+      try {
+        const { fullData } = await loadExcelWorkbook('names.xlsx');
+        if (!fullData || fullData.length <= 1) {
+          console.warn('names.xlsx is empty or invalid.');
+          setNamesInitialized(true);
+          return;
+        }
+
+        const headers = fullData[0] || [];
+        const styleIdx = headers.indexOf('适用兵种');
+        const nameIdx = headers.indexOf('中文名');
+        const quaIdx = headers.indexOf('品质等级');
+
+        if (styleIdx === -1 || nameIdx === -1 || quaIdx === -1) {
+          console.warn('names.xlsx headers mismatch:', headers);
+          setNamesInitialized(true);
+          return;
+        }
+
+        // 品质与兵种类型映射表
+        const STYLE_MAP = {
+          '步兵': 0, // Infantry
+          '远程': 1, // Archer
+          '骑兵': 3, // Cavalry
+          '枪兵': 4  // Pikeman
+        };
+
+        const pool = { 0: {}, 1: {}, 3: {}, 4: {} };
+
+        // 遍历解析数据行 (第一行为表头，从索引 1 开始)
+        for (let i = 1; i < fullData.length; i++) {
+          const row = fullData[i];
+          if (!row || row.length === 0) continue;
+          const styleStr = row[styleIdx];
+          const name = row[nameIdx];
+          const qua = Number(row[quaIdx]);
+
+          if (styleStr && name && !isNaN(qua)) {
+            const style = STYLE_MAP[styleStr];
+            if (style !== undefined) {
+              if (!pool[style][qua]) {
+                pool[style][qua] = [];
+              }
+              pool[style][qua].push(name);
+            }
+          }
+        }
+
+        console.log('Dynamic names pool loaded successfully:', pool);
+        setNamesPool(pool);
+      } catch (error) {
+        console.warn('Failed to load names.xlsx, using default ROLE_NAME_POOLS instead:', error);
+      } finally {
+        setNamesInitialized(true);
+      }
+    }
+
+    initNamesPool();
+  }, []);
+
+  // 初始启动：如果兵种库为空，待名字池载入完毕后自动生成一版初始数据
+  React.useEffect(() => {
+    if (namesInitialized && state.units.length === 0) {
+      const initialUnits = generateMatrixUnits(matrixConfig, roleWeights, derivationParams, [], namesPool);
       dispatch({ type: 'IMPORT_UNITS', payload: initialUnits, replace: true });
     }
-  }, []);
+  }, [namesInitialized]);
 
   // 使用自定义 Hook 进行核心计算
   const { fullLevelPlan, analysisResult } = useLevelPlanning(state, {
@@ -121,9 +189,18 @@ const LevelMaker = () => {
               setMatrixConfig={setMatrixConfig}
               validationConfig={validationConfig}
               setValidationConfig={setValidationConfig}
+              namesPool={namesPool}
             />
           )}
-          {activeTab === 'plan' && <DeploymentPlan fullLevelPlan={fullLevelPlan} previewRange={previewRange} />}
+          {activeTab === 'plan' && (
+            <DeploymentPlan
+              fullLevelPlan={fullLevelPlan}
+              previewRange={previewRange}
+              units={state.units}
+              roleWeights={roleWeights}
+              derivationParams={derivationParams}
+            />
+          )}
           {activeTab === 'analysis' && (
             <LevelAnalysis 
               analysisResult={analysisResult} 

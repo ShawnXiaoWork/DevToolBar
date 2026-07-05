@@ -19,7 +19,8 @@ const RosterPlanning = ({
   matrixConfig,
   setMatrixConfig,
   validationConfig,
-  setValidationConfig
+  setValidationConfig,
+  namesPool
 }) => {
   return (
     <motion.div
@@ -45,6 +46,8 @@ const RosterPlanning = ({
             roleWeights={roleWeights}
             derivationParams={derivationParams}
             dispatch={dispatch}
+            state={state}
+            namesPool={namesPool}
           />
 
           <TemplateEditor 
