@@ -35,7 +35,7 @@ export const DEFAULT_LEVEL_CONFIG = {
 // 2. 兵种属性生成基准参数 (Derivation Params)
 // ----------------------------------------------------
 export const DEFAULT_DERIVATION_PARAMS = {
-  baseHp: 10,                 // 基础生命
+  baseHp: 100,                 // 基础生命
   baseAtk: 15,                // 基础攻击
   baseSpd: 75,                // 基础移动速度
   baseSkillPower: 0,          // 基础技能强度

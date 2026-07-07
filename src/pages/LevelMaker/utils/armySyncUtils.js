@@ -71,12 +71,18 @@ const cleanLegacyArmyRows = ({ sheet, headers, range, roleWeights, derivationPar
   }
 };
 
-export const syncArmyTable = async ({ units, roleWeights = {}, derivationParams = {} }) => {
+export const syncArmyTable = async ({
+  units,
+  roleWeights = {},
+  derivationParams = {},
+  loader = loadExcelWorkbook,
+  saver = saveExcelWorkbook
+}) => {
   if (!Array.isArray(units) || units.length === 0) {
     throw new Error('没有可同步的兵种数据，ArmyTable.xlsx 未更新');
   }
 
-  const { workbook, sheet, headers, range } = await loadExcelWorkbook('ArmyTable.xlsx');
+  const { workbook, sheet, headers, range } = await loader('ArmyTable.xlsx');
 
   if (headers.indexOf('Qua') === -1) {
     headers.push('Qua');
@@ -96,7 +102,7 @@ export const syncArmyTable = async ({ units, roleWeights = {}, derivationParams 
     'Note': 'name',
     'Name': (unit) => `armyName.${unit.id}`,
     'Description': (unit) => `armyDescription.${unit.id}`,
-    'ArmyTag': (unit) => unit.armyTag || 0,
+    'ArmyTag': (unit) => (unit.armyTag >= 20) ? 20 : 1,
     'Hp': 'hp',
     'HpFake': 'hp',
     'Attack': 'atk',
@@ -104,7 +110,7 @@ export const syncArmyTable = async ({ units, roleWeights = {}, derivationParams 
     'AttackFreq': (unit) => unit.atkSpeed || 1.0,
     'Speed': (unit) => unit.spd || 75,
     'AttackRange': (unit) => unit.atkRange || 100,
-    'FindRange': (unit) => unit.detRange || 200,
+    'FindRange': (unit) => (unit.detRange || 200) * 6,
     'Race': (unit) => Array.isArray(unit.roles) ? unit.roles.join('|') : unit.roles,
     'Roles': (unit) => (unit.roles && unit.roles.length > 0) ? Number(unit.roles[0]) : 0,
     'Style': (unit) => unit.style !== undefined ? Number(unit.style) : 0,
@@ -128,7 +134,7 @@ export const syncArmyTable = async ({ units, roleWeights = {}, derivationParams 
     }
   });
 
-  const saveResult = await saveExcelWorkbook(workbook, 'ArmyTable.xlsx');
+  const saveResult = await saver(workbook, 'ArmyTable.xlsx');
   return {
     workbook,
     sheet,
