@@ -15,7 +15,7 @@ const TemplateEditor = ({ rosterTemplates, setRosterTemplates, activeTemplateId,
         </select>
         <button className="btn-outline" onClick={() => {
           const newId = `t${Date.now()}`;
-          setRosterTemplates([...rosterTemplates, { id: newId, name: '新模版', 0: 0.25, 1: 0.25, 2: 0.25, 3: 0.25 }]);
+          setRosterTemplates([...rosterTemplates, { id: newId, name: '新模版', 0: 0.3, 1: 0.3, 2: 0.2, 3: 0.2, 4: 0.0, 5: 0.0 }]);
           setActiveTemplateId(newId);
         }}><Plus size={16} /></button>
       </div>
@@ -28,17 +28,17 @@ const TemplateEditor = ({ rosterTemplates, setRosterTemplates, activeTemplateId,
           }} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-          {[0, 1, 2, 3].map(role => (
+          {Object.keys(ROLE_LABELS).map(Number).map(role => (
             <div key={role} className="input-group">
               <label>{ROLE_LABELS[role]} 比例</label>
-              <input type="number" step="0.05" value={activeTemplate[role]} onChange={(e) => {
+              <input type="number" step="0.05" value={activeTemplate[role] !== undefined ? activeTemplate[role] : 0} onChange={(e) => {
                 setRosterTemplates(rosterTemplates.map(rt => rt.id === activeTemplate.id ? { ...rt, [role]: Number(e.target.value) } : rt));
               }} />
             </div>
           ))}
         </div>
-        <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: (activeTemplate[0] + activeTemplate[1] + activeTemplate[2] + activeTemplate[3]).toFixed(2) === '1.00' ? '#00E676' : '#FF5252' }}>
-          当前比例总和: {(activeTemplate[0] + activeTemplate[1] + activeTemplate[2] + activeTemplate[3]).toFixed(2)}
+        <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: Object.keys(ROLE_LABELS).reduce((sum, role) => sum + (activeTemplate[role] || 0), 0).toFixed(2) === '1.00' ? '#00E676' : '#FF5252' }}>
+          当前比例总和: {Object.keys(ROLE_LABELS).reduce((sum, role) => sum + (activeTemplate[role] || 0), 0).toFixed(2)}
         </div>
       </div>
     </div>

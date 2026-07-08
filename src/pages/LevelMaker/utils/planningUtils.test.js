@@ -14,7 +14,7 @@ const derivationParams = {
 };
 
 const namesPool = {
-  4: {
+  1: {
     3: Array.from({ length: 10 }, (_, index) => `T1Name${index + 1}`),
     4: Array.from({ length: 10 }, (_, index) => `T2Name${index + 1}`),
     5: Array.from({ length: 10 }, (_, index) => `T3Name${index + 1}`),
@@ -29,8 +29,7 @@ test('generateMatrixUnits avoids duplicate names when name pools have enough ent
   try {
     const units = generateMatrixUnits(
       {
-        totalLevels: 200,
-        updateFrequency: 5,
+        totalUnits: 40,
         randomness: 0,
         roleDistribution: { 1: 1 },
         bossFrequency: 999
@@ -56,8 +55,7 @@ test('generateMatrixUnits appends a suffix when a name pool is exhausted', () =>
   try {
     const units = generateMatrixUnits(
       {
-        totalLevels: 40,
-        updateFrequency: 5,
+        totalUnits: 8,
         randomness: 0,
         roleDistribution: { 1: 1 },
         bossFrequency: 999
@@ -66,7 +64,7 @@ test('generateMatrixUnits appends a suffix when a name pool is exhausted', () =>
       derivationParams,
       [],
       {
-        4: {
+        1: {
           3: ['OnlyT1'],
           4: ['OnlyT2'],
           5: ['OnlyT3'],

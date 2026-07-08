@@ -1,4 +1,4 @@
-import { ROLE_ID_RANGES, ROLE_COMMON_SKILLS } from './constants.js';
+import { ROLE_ID_RANGES, ROLE_COMMON_SKILLS, ROLE_LABELS, ROLE_SYMBOLS, ROLE_NAME_POOLS, BOSS_PREFIXES } from './constants.js';
 
 /**
  * 计算单个兵种的综合战力评分 (Power Score)
@@ -78,27 +78,19 @@ export const getTargetTier = (level) => {
  * 核心：矩阵生成算法 (封装版)
  */
 export const generateMatrixUnits = (config, roleWeights, derivationParams, existingUnits = [], namesPool = null) => {
-  const { totalLevels, updateFrequency, randomness, roleDistribution, bossFrequency } = config;
-  const totalTypes = Math.ceil(totalLevels / updateFrequency);
+  const { totalUnits, randomness, roleDistribution, bossFrequency } = config;
+  const totalTypes = totalUnits || 40;
   const newUnits = [];
   const usedNames = new Set(existingUnits.map(unit => unit.name).filter(Boolean));
 
-  const ROLE_LABELS = { 0: 'Tank', 1: 'Warrior', 2: 'DPS', 3: 'CC' };
-  const ROLE_SYMBOLS = { 0: '🛡️', 1: '⚔️', 2: '🎯', 3: '🌀' };
-  const BOSS_PREFIXES = ['【极秘项目】', '【变异主宰】', '【钢铁暴君】', '【末日先兆】', '【零号病毒】', '【虚空母体】'];
-  const ROLE_NAME_POOLS = {
-    0: ['石像鬼', '巨盾兵', '山岭巨人', '圣骑士', '憎恶', '铁甲蛹', '岩石怪', '禁卫', '守望者', '龙龟'],
-    1: ['剑士', '狂战士', '恶魔猎手', '骷髅兵', '影舞者', '先遣兵', '处刑人', '狼人', '武士', '角斗士'],
-    2: ['希尔瓦娜斯', '寒冰射手', '狙击手', '火枪手', '巫妖', '法术大师', '游侠', '投石车', '暗影牧师', '元素使'],
-    3: ['寒冰法师', '术士', '德鲁伊', '蜘蛛女王', '萨满', '催眠者', '粘液怪', '沉默者', '药剂师', '先知']
-  };
-
-  // 职能到 Style 的映射 (0: 步兵, 1: 弓箭手, 3: 骑兵, 4: 长枪兵)
+  // 职能到 Style 的映射 (0: 步兵, 1: 弓箭手, 2: 骑兵, 3: 长枪兵, 4: 法师, 5: 辅助)
   const ROLE_TO_STYLE = {
-    0: 0, // Tank -> Infantry
-    1: 4, // Warrior -> Pikeman
-    2: 1, // DPS -> Archer
-    3: 3  // CC -> Cavalry
+    0: 0, // 步兵 -> Infantry (0)
+    1: 1, // 弓箭手 -> Archer (1)
+    2: 3, // 骑兵 -> Cavalry (3)
+    3: 4, // 长枪兵 -> Pikeman (4)
+    4: 1, // 法师 -> Archer (1)
+    5: 1  // 辅助 -> Archer (1)
   };
 
   const pickName = (pool, buildDisplayName) => {
@@ -143,8 +135,7 @@ export const generateMatrixUnits = (config, roleWeights, derivationParams, exist
 
       const excelNames = namesPool && namesPool[style] && namesPool[style][qua];
       const bossPrefix = isBoss ? BOSS_PREFIXES[Math.floor(Math.random() * BOSS_PREFIXES.length)] : '';
-      const symbol = ROLE_SYMBOLS[role] || '';
-      const buildDisplayName = (candidateName) => `${bossPrefix}${candidateName}${symbol} T${tier}`;
+      const buildDisplayName = (candidateName) => `${bossPrefix}${candidateName}-${ROLE_LABELS[role]} T${tier}`;
       const baseName = pickName(
         excelNames && excelNames.length > 0 ? excelNames : (ROLE_NAME_POOLS[role] || ['未知单位']),
         buildDisplayName

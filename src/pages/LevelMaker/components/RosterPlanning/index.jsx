@@ -20,7 +20,9 @@ const RosterPlanning = ({
   setMatrixConfig,
   validationConfig,
   setValidationConfig,
-  namesPool
+  namesPool,
+  namesSource,
+  loadNamesPool
 }) => {
   return (
     <motion.div
@@ -48,6 +50,8 @@ const RosterPlanning = ({
             dispatch={dispatch}
             state={state}
             namesPool={namesPool}
+            namesSource={namesSource}
+            loadNamesPool={loadNamesPool}
           />
 
           <TemplateEditor 

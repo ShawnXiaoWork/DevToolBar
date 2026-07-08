@@ -4,10 +4,13 @@ import { calculatePowerScore } from './planningUtils.js';
 
 const inferRoleFromName = (name) => {
   const noteVal = name || '';
-  if (noteVal.match(/盾|甲|巨|熊|象|肉|防/)) return 0;
-  if (noteVal.match(/弓|法|炮|巫|箭|弩|魔|狙|精/)) return 2;
-  if (noteVal.match(/刺|医|疗|牧|毒|影|隐|辅/)) return 3;
-  return 1;
+  if (noteVal.match(/步|盾|勇|士|卫|禁|斯巴达/)) return 0; // 步兵
+  if (noteVal.match(/弓|弩|射|飞|羽/)) return 1;          // 弓箭手
+  if (noteVal.match(/骑|马|狼|骁|驰|铁骑/)) return 2;      // 骑兵
+  if (noteVal.match(/枪|刺|矛|戟/)) return 3;              // 长枪兵
+  if (noteVal.match(/法|魔|巫|术|咒|元素|召/)) return 4;   // 法师
+  if (noteVal.match(/医|疗|牧|辅|贤|圣|歌|地/)) return 5;   // 辅助
+  return 0; // 默认步兵
 };
 
 const cleanUnitForArmyTable = (unit, roleWeights, derivationParams) => {

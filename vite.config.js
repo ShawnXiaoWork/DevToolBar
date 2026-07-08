@@ -7,8 +7,8 @@ import { fileURLToPath } from 'url'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const SAVE_ALLOWED_FILES = ['ArmyTable.xlsx', 'StageStepTable.xlsx', 'StageTable.xlsx', 'ItemTable.xlsx', 'FunctionUnlockTable.xlsx']
-const READ_ALLOWED_FILES = [...SAVE_ALLOWED_FILES, 'names.xlsx']
+const SAVE_ALLOWED_FILES = ['ArmyTable.xlsx', 'StageStepTable.xlsx', 'StageTable.xlsx', 'ItemTable.xlsx', 'FunctionUnlockTable.xlsx', 'names.xlsx', 'name.xlsx']
+const READ_ALLOWED_FILES = [...SAVE_ALLOWED_FILES, 'names.xlsx', 'name.xlsx']
 
 const normalizeExternalPath = (externalPathBase) => externalPathBase ? path.resolve(externalPathBase) : ''
 

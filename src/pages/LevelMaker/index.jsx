@@ -30,6 +30,81 @@ import {
   DEFAULT_MATRIX_CONFIG
 } from '../../config/defaultConfig';
 
+const fetchAndParseNamesPool = async () => {
+  let loadedData = null;
+  let sourceName = 'none';
+
+  // 1. 尝试加载 names.xlsx
+  try {
+    const { fullData } = await loadExcelWorkbook('names.xlsx');
+    if (fullData && fullData.length > 1) {
+      loadedData = fullData;
+      sourceName = 'names.xlsx';
+    }
+  } catch (err) {
+    console.log('Failed to load names.xlsx, trying name.xlsx...', err);
+  }
+
+  // 2. 尝试加载 name.xlsx (如果 names.xlsx 未成功加载)
+  if (!loadedData) {
+    try {
+      const { fullData } = await loadExcelWorkbook('name.xlsx');
+      if (fullData && fullData.length > 1) {
+        loadedData = fullData;
+        sourceName = 'name.xlsx';
+      }
+    } catch (err) {
+      console.log('Failed to load name.xlsx too.', err);
+    }
+  }
+
+  if (!loadedData) {
+    return { pool: null, source: 'default', count: 0 };
+  }
+
+  const headers = loadedData[0] || [];
+  const styleIdx = headers.indexOf('适用兵种');
+  const nameIdx = headers.indexOf('中文名');
+  const quaIdx = headers.indexOf('品质等级');
+
+  if (styleIdx === -1 || nameIdx === -1 || quaIdx === -1) {
+    return { pool: null, source: 'default', count: 0 };
+  }
+
+  // 品质与兵种类型映射表
+  const STYLE_MAP = {
+    '步兵': 0, // Infantry
+    '远程': 1, // Archer
+    '骑兵': 3, // Cavalry
+    '枪兵': 4  // Pikeman
+  };
+
+  const pool = { 0: {}, 1: {}, 3: {}, 4: {} };
+  let count = 0;
+
+  // 遍历解析数据行 (第一行为表头，从索引 1 开始)
+  for (let i = 1; i < loadedData.length; i++) {
+    const row = loadedData[i];
+    if (!row || row.length === 0) continue;
+    const styleStr = row[styleIdx];
+    const name = row[nameIdx];
+    const qua = Number(row[quaIdx]);
+
+    if (styleStr && name && !isNaN(qua)) {
+      const style = STYLE_MAP[styleStr];
+      if (style !== undefined) {
+        if (!pool[style][qua]) {
+          pool[style][qua] = [];
+        }
+        pool[style][qua].push(name);
+        count++;
+      }
+    }
+  }
+
+  return { pool, source: sourceName, count };
+};
+
 const LevelMaker = () => {
   const { state, dispatch } = useGame();
   const [activeTab, setActiveTab] = useState('units'); 
@@ -48,67 +123,49 @@ const LevelMaker = () => {
   // 动态加载的名字池状态与初始化标志
   const [namesPool, setNamesPool] = useState(null);
   const [namesInitialized, setNamesInitialized] = useState(false);
+  const [namesSource, setNamesSource] = useState('none'); // 'names.xlsx', 'name.xlsx', 'default'
 
-  // 动态加载 public/names.xlsx 并转换为 namesPool 结构
+  // 动态加载 public/names.xlsx / name.xlsx 并转换为 namesPool 结构
+  const loadNamesPool = async (silent = false) => {
+    try {
+      const { pool, source, count } = await fetchAndParseNamesPool();
+      setNamesPool(pool);
+      setNamesSource(source);
+      setNamesInitialized(true);
+      if (!silent) {
+        if (source === 'default') {
+          alert('无法加载 names.xlsx 或 name.xlsx，已降级使用系统默认静态名称池。');
+        } else {
+          alert(`名称库重载成功！\n文件源: ${source}\n共解析 ${count} 个名称。`);
+        }
+      }
+      return pool;
+    } catch (error) {
+      console.warn('Failed to load names pool:', error);
+      setNamesSource('default');
+      setNamesPool(null);
+      setNamesInitialized(true);
+      if (!silent) {
+        alert('解析名称库文件失败，已降级使用系统默认名称池。');
+      }
+      return null;
+    }
+  };
+
   React.useEffect(() => {
     async function initNamesPool() {
       try {
-        const { fullData } = await loadExcelWorkbook('names.xlsx');
-        if (!fullData || fullData.length <= 1) {
-          console.warn('names.xlsx is empty or invalid.');
-          setNamesInitialized(true);
-          return;
-        }
-
-        const headers = fullData[0] || [];
-        const styleIdx = headers.indexOf('适用兵种');
-        const nameIdx = headers.indexOf('中文名');
-        const quaIdx = headers.indexOf('品质等级');
-
-        if (styleIdx === -1 || nameIdx === -1 || quaIdx === -1) {
-          console.warn('names.xlsx headers mismatch:', headers);
-          setNamesInitialized(true);
-          return;
-        }
-
-        // 品质与兵种类型映射表
-        const STYLE_MAP = {
-          '步兵': 0, // Infantry
-          '远程': 1, // Archer
-          '骑兵': 3, // Cavalry
-          '枪兵': 4  // Pikeman
-        };
-
-        const pool = { 0: {}, 1: {}, 3: {}, 4: {} };
-
-        // 遍历解析数据行 (第一行为表头，从索引 1 开始)
-        for (let i = 1; i < fullData.length; i++) {
-          const row = fullData[i];
-          if (!row || row.length === 0) continue;
-          const styleStr = row[styleIdx];
-          const name = row[nameIdx];
-          const qua = Number(row[quaIdx]);
-
-          if (styleStr && name && !isNaN(qua)) {
-            const style = STYLE_MAP[styleStr];
-            if (style !== undefined) {
-              if (!pool[style][qua]) {
-                pool[style][qua] = [];
-              }
-              pool[style][qua].push(name);
-            }
-          }
-        }
-
-        console.log('Dynamic names pool loaded successfully:', pool);
+        const { pool, source } = await fetchAndParseNamesPool();
         setNamesPool(pool);
+        setNamesSource(source);
       } catch (error) {
-        console.warn('Failed to load names.xlsx, using default ROLE_NAME_POOLS instead:', error);
+        console.warn('Failed to load names pool on init:', error);
+        setNamesSource('default');
+        setNamesPool(null);
       } finally {
         setNamesInitialized(true);
       }
     }
-
     initNamesPool();
   }, []);
 
@@ -190,6 +247,8 @@ const LevelMaker = () => {
               validationConfig={validationConfig}
               setValidationConfig={setValidationConfig}
               namesPool={namesPool}
+              namesSource={namesSource}
+              loadNamesPool={loadNamesPool}
             />
           )}
           {activeTab === 'plan' && (

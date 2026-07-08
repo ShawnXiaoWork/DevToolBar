@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { calculatePowerScore, getLevelBudget, getTargetTier } from '../utils/planningUtils';
+import { ROLE_LABELS } from '../utils/constants';
 
 /**
  * 核心关卡规划 Hook
@@ -69,11 +70,11 @@ export const useLevelPlanning = (state, config) => {
 
       // 4. 体验驱动的普通兵种选取 (忽略 Budget 约束数量，侧重多样性)
       // 逻辑：每个职能根据模板权重，选取“最合适”的一个兵种，赋予固定或随机的合理数量
-      [0, 1, 2, 3].forEach(roleId => {
+      Object.keys(ROLE_LABELS).map(Number).forEach(roleId => {
         const roleWeight = template[roleId] || 0;
         if (roleWeight <= 0) return;
 
-        const roleKey = ['Tank', 'Warrior', 'DPS', 'CC'][roleId];
+        const roleKey = ROLE_LABELS[roleId] || `Role-${roleId}`;
         
         // 筛选符合职能且符合当前 Tier 或上一 Tier (作为过渡) 的兵种
         let pool = scaledUnits.filter(u => {
@@ -115,9 +116,7 @@ export const useLevelPlanning = (state, config) => {
         hpCoeff, 
         atkCoeff, 
         isBossLevel, 
-        targetTier,
-        // 资深架构师提示：注入难度预算配置中的波次间隔，若未配置则默认为 30 秒
-        waveInterval: levelConfig.waveInterval !== undefined ? levelConfig.waveInterval : 30
+        targetTier
       };
     });
   }, [state.units, levelConfig, previewRange, activeTemplateId, rosterTemplates, matrixConfig]);
