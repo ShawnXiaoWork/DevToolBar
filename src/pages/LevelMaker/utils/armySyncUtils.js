@@ -74,6 +74,74 @@ const cleanLegacyArmyRows = ({ sheet, headers, range, roleWeights, derivationPar
   }
 };
 
+const getSortableIdValue = (cell) => {
+  if (!cell || cell.v === undefined || cell.v === null || cell.v === '') return Number.POSITIVE_INFINITY;
+  const numericId = Number(cell.v);
+  return Number.isFinite(numericId) ? numericId : String(cell.v);
+};
+
+const compareSortableIds = (a, b) => {
+  if (typeof a.id === 'number' && typeof b.id === 'number') return a.id - b.id;
+  if (typeof a.id === 'number') return -1;
+  if (typeof b.id === 'number') return 1;
+  return String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
+};
+
+const sortSheetRowsById = ({ sheet, headers, range, idField = 'Id', dataStartRow = 4 }) => {
+  const idColIdx = headers.indexOf(idField);
+  if (idColIdx === -1) throw new Error(`ArmyTable.xlsx 缺少 ${idField} 列`);
+  if (!range || range.e.r < dataStartRow) return;
+
+  const rowCount = range.e.r - dataStartRow + 1;
+  const rowSnapshots = [];
+
+  for (let r = dataStartRow; r <= range.e.r; r++) {
+    const cells = [];
+    for (let c = 0; c <= range.e.c; c++) {
+      const addr = XLSX.utils.encode_cell({ c, r });
+      cells[c] = sheet[addr] ? { ...sheet[addr] } : undefined;
+    }
+
+    rowSnapshots.push({
+      id: getSortableIdValue(cells[idColIdx]),
+      originalIndex: r - dataStartRow,
+      cells,
+      rowMeta: sheet['!rows']?.[r] ? { ...sheet['!rows'][r] } : undefined
+    });
+  }
+
+  rowSnapshots.sort((a, b) => {
+    const idCompare = compareSortableIds(a, b);
+    return idCompare === 0 ? a.originalIndex - b.originalIndex : idCompare;
+  });
+
+  if (Array.isArray(sheet['!rows'])) {
+    sheet['!rows'] = [...sheet['!rows']];
+  }
+
+  for (let offset = 0; offset < rowCount; offset++) {
+    const targetRow = dataStartRow + offset;
+    const snapshot = rowSnapshots[offset];
+
+    for (let c = 0; c <= range.e.c; c++) {
+      const addr = XLSX.utils.encode_cell({ c, r: targetRow });
+      if (snapshot.cells[c]) {
+        sheet[addr] = { ...snapshot.cells[c] };
+      } else {
+        delete sheet[addr];
+      }
+    }
+
+    if (Array.isArray(sheet['!rows'])) {
+      if (snapshot.rowMeta) {
+        sheet['!rows'][targetRow] = { ...snapshot.rowMeta };
+      } else {
+        delete sheet['!rows'][targetRow];
+      }
+    }
+  }
+};
+
 export const syncArmyTable = async ({
   units,
   roleWeights = {},
@@ -136,6 +204,8 @@ export const syncArmyTable = async ({
       templateId: 1001
     }
   });
+
+  sortSheetRowsById({ sheet, headers, range });
 
   const saveResult = await saver(workbook, 'ArmyTable.xlsx');
   return {

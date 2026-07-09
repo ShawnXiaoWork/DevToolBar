@@ -7,8 +7,8 @@
 // 1. 全局关卡难度预算配置 (Level Budget Config)
 // ----------------------------------------------------
 export const DEFAULT_LEVEL_CONFIG = {
-  baseScore: 50000,           // 关卡基准分数
-  initialMultiplier: 1,       // 起始难度倍率
+  baseScore: 100,           // 关卡基准分数
+  initialMultiplier: 0.6,       // 起始难度倍率
   difficultyFactor: 0.2,      // 后期难度膨胀因子
   spikes: Array.from({ length: 20 }, (_, i) => {
     const level = (i + 1) * 10;

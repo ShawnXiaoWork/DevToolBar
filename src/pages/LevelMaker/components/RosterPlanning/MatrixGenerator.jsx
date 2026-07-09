@@ -118,7 +118,7 @@ const MatrixGenerator = ({ matrixConfig, setMatrixConfig, roleWeights, derivatio
             <input type="number" value={matrixConfig.bossFrequency} onChange={e => setMatrixConfig({ ...matrixConfig, bossFrequency: Number(e.target.value) })} />
           </div>
           <div className="input-group">
-            <label>每关强制投放 Boss 数</label>
+            <label>Boss关强制投放 Boss 数</label>
             <input type="number" value={matrixConfig.minBossPerLevel} onChange={e => setMatrixConfig({ ...matrixConfig, minBossPerLevel: Number(e.target.value) })} />
           </div>
         </div>

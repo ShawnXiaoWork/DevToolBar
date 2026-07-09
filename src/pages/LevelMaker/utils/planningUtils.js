@@ -75,6 +75,117 @@ export const getTargetTier = (level) => {
 };
 
 /**
+ * 根据兵种属性解析其所属的 Tier 级别 (1, 2, 3, 4)
+ */
+export const getUnitTier = (unit) => {
+  if (unit.name && unit.name.includes('T1')) return 1;
+  if (unit.name && unit.name.includes('T2')) return 2;
+  if (unit.name && unit.name.includes('T3')) return 3;
+  if (unit.name && unit.name.includes('T4')) return 4;
+  if (unit.qua) return Math.max(1, Math.min(4, unit.qua - 2));
+  return 1;
+};
+
+const unitMatchesRole = (unit, roleId) => {
+  const roles = Array.isArray(unit.roles) ? unit.roles : [];
+  return roles.includes(roleId) || roles.includes(String(roleId));
+};
+
+const getScore = (unit) => Math.max(1, unit.scaledScore || calculatePowerScore(unit));
+
+const sortRosterCandidates = (units, targetTierInt) => [...units].sort((a, b) => {
+  const tierDelta = Math.abs(getUnitTier(a) - targetTierInt) - Math.abs(getUnitTier(b) - targetTierInt);
+  if (tierDelta !== 0) return tierDelta;
+
+  const scoreDelta = getScore(a) - getScore(b);
+  if (scoreDelta !== 0) return scoreDelta;
+
+  return String(a.id).localeCompare(String(b.id));
+});
+
+const pickBudgetedTypes = (pool, roleBudget, previousSelected, targetTierInt) => {
+  const previousIds = new Set((previousSelected || []).map(unit => String(unit.id)));
+  const previousUnits = pool.filter(unit => previousIds.has(String(unit.id)));
+  const newUnits = pool.filter(unit => !previousIds.has(String(unit.id)));
+  const ordered = [
+    ...sortRosterCandidates(previousUnits, targetTierInt),
+    ...sortRosterCandidates(newUnits, targetTierInt)
+  ];
+
+  const selected = [];
+  let spent = 0;
+
+  ordered.forEach(unit => {
+    const score = getScore(unit);
+    if (selected.length === 0 || spent + score <= roleBudget) {
+      selected.push(unit);
+      spent += score;
+    }
+  });
+
+  return selected;
+};
+
+/**
+ * 按关卡预算分配普通兵种类型与数量。
+ * 预算先按阵容模板拆到职能，再在每个职能内优先延续上一关兵种，
+ * 新类型只在预算能够承载时逐步加入。
+ */
+export const allocateBudgetedRoster = ({
+  level,
+  budget,
+  targetTier,
+  template,
+  scaledUnits,
+  previousSelected = []
+}) => {
+  const targetTierInt = Number(String(targetTier).replace('T', '')) || getUnitTier({ name: targetTier });
+  const selected = [];
+
+  Object.keys(ROLE_LABELS).map(Number).forEach(roleId => {
+    const roleWeight = template?.[roleId] || 0;
+    const roleBudget = budget * roleWeight;
+    if (roleWeight <= 0 || roleBudget <= 0) return;
+
+    let pool = scaledUnits.filter(unit => {
+      const isBoss = unit.armyTag >= 20;
+      const isUnlocked = (unit.unlockLevel || 1) <= level;
+      const tier = getUnitTier(unit);
+      const isTargetTier = tier === targetTierInt || tier === targetTierInt - 1;
+      return !isBoss && isUnlocked && isTargetTier && unitMatchesRole(unit, roleId);
+    });
+
+    if (pool.length === 0) {
+      pool = scaledUnits.filter(unit => {
+        const isBoss = unit.armyTag >= 20;
+        const isUnlocked = (unit.unlockLevel || 1) <= level;
+        return !isBoss && isUnlocked && unitMatchesRole(unit, roleId);
+      });
+    }
+
+    if (pool.length === 0) {
+      pool = scaledUnits.filter(unit => unit.armyTag < 20 && unitMatchesRole(unit, roleId));
+    }
+
+    if (pool.length === 0) return;
+
+    const roleKey = ROLE_LABELS[roleId] || `Role-${roleId}`;
+    const previousForRole = previousSelected.filter(unit => (
+      unit.assignedRole === roleKey || unitMatchesRole(unit, roleId)
+    ));
+    const pickedTypes = pickBudgetedTypes(pool, roleBudget, previousForRole, targetTierInt);
+    const totalTypeScore = pickedTypes.reduce((sum, unit) => sum + getScore(unit), 0);
+
+    pickedTypes.forEach(unit => {
+      const count = Math.max(1, Math.floor(roleBudget / totalTypeScore));
+      selected.push({ ...unit, count, assignedRole: roleKey });
+    });
+  });
+
+  return selected;
+};
+
+/**
  * 核心：矩阵生成算法 (封装版)
  */
 export const generateMatrixUnits = (config, roleWeights, derivationParams, existingUnits = [], namesPool = null) => {
@@ -82,6 +193,7 @@ export const generateMatrixUnits = (config, roleWeights, derivationParams, exist
   const totalTypes = totalUnits || 40;
   const newUnits = [];
   const usedNames = new Set(existingUnits.map(unit => unit.name).filter(Boolean));
+  const usedBaseNames = new Set();
 
   // 职能到 Style 的映射 (0: 步兵, 1: 弓箭手, 2: 骑兵, 3: 长枪兵, 4: 法师, 5: 辅助)
   const ROLE_TO_STYLE = {
@@ -93,14 +205,23 @@ export const generateMatrixUnits = (config, roleWeights, derivationParams, exist
     5: 1  // 辅助 -> Archer (1)
   };
 
-  const pickName = (pool, buildDisplayName) => {
-    const names = pool.length > 0 ? pool : ['未知单位'];
+  const uniqueNames = (names) => [...new Set((names || []).filter(Boolean))];
+
+  const getNamesByPreference = (preferredPool, fallbackPools = []) => {
+    const preferredNames = uniqueNames(preferredPool);
+    const fallbackNames = uniqueNames(fallbackPools.flat()).filter(name => !preferredNames.includes(name));
+    const names = [...preferredNames, ...fallbackNames];
+    return names.length > 0 ? names : ['未知单位'];
+  };
+
+  const pickName = (preferredPool, fallbackPools, buildDisplayName) => {
+    const names = getNamesByPreference(preferredPool, fallbackPools);
     const startIdx = Math.floor(Math.random() * names.length);
 
     for (let offset = 0; offset < names.length; offset++) {
       const candidate = names[(startIdx + offset) % names.length];
       const displayName = buildDisplayName(candidate);
-      if (!usedNames.has(displayName)) {
+      if (!usedBaseNames.has(candidate) && !usedNames.has(displayName)) {
         return candidate;
       }
     }
@@ -134,10 +255,17 @@ export const generateMatrixUnits = (config, roleWeights, derivationParams, exist
       const qua = tier + 2;
 
       const excelNames = namesPool && namesPool[style] && namesPool[style][qua];
+      const sameStyleFallbackPools = namesPool && namesPool[style]
+        ? Object.keys(namesPool[style])
+          .filter(candidateQua => Number(candidateQua) !== qua)
+          .sort((a, b) => Math.abs(Number(a) - qua) - Math.abs(Number(b) - qua))
+          .map(candidateQua => namesPool[style][candidateQua])
+        : [];
       const bossPrefix = isBoss ? BOSS_PREFIXES[Math.floor(Math.random() * BOSS_PREFIXES.length)] : '';
       const buildDisplayName = (candidateName) => `${bossPrefix}${candidateName}-${ROLE_LABELS[role]} T${tier}`;
       const baseName = pickName(
         excelNames && excelNames.length > 0 ? excelNames : (ROLE_NAME_POOLS[role] || ['未知单位']),
+        excelNames && excelNames.length > 0 ? sameStyleFallbackPools : [],
         buildDisplayName
       );
       const displayName = buildDisplayName(baseName);
@@ -164,6 +292,7 @@ export const generateMatrixUnits = (config, roleWeights, derivationParams, exist
         spawnWeight: isBoss ? 10 : 50
       });
       usedNames.add(displayName);
+      usedBaseNames.add(baseName);
     }
   });
 

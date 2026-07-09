@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
-import { calculatePowerScore, getLevelBudget, getTargetTier } from '../utils/planningUtils';
-import { ROLE_LABELS } from '../utils/constants';
+import { allocateBudgetedRoster, calculatePowerScore, getLevelBudget, getTargetTier, getUnitTier } from '../utils/planningUtils';
 
 /**
  * 核心关卡规划 Hook
@@ -8,6 +7,7 @@ import { ROLE_LABELS } from '../utils/constants';
  * 采用“体验驱动”算法：侧重于兵种的递进、引入与多样性
  */
 export const useLevelPlanning = (state, config) => {
+  const units = state.units;
   const { 
     levelConfig, 
     previewRange, 
@@ -19,20 +19,101 @@ export const useLevelPlanning = (state, config) => {
   } = config;
 
   /**
+   * 1. 预处理：为每个普通兵种分配其“首次引入/解锁关卡” (unlockLevel)
+   * 使得在生成关卡时，新兵种能够随着关卡深度逐步、平滑地解锁，而不是每关都在乱换。
+   */
+  const unitsWithUnlockLevels = useMemo(() => {
+    if (units.length === 0) return [];
+
+    // 筛选出所有普通兵种 (去除了 armyTag >= 20 的 Boss 兵种)
+    const normalUnits = units.filter(u => !u.armyTag || u.armyTag < 20);
+
+    // 定义每个 Tier 对应的关卡解锁区间限制
+    const TIER_RANGES = {
+      1: { start: 1, end: 20 },
+      2: { start: 21, end: 50 },
+      3: { start: 51, end: 80 },
+      4: { start: 81, end: 200 } // T4 区间上限默认到 200 关
+    };
+
+    // 按 Tier 分组
+    const unitsByTier = { 1: [], 2: [], 3: [], 4: [] };
+    normalUnits.forEach(u => {
+      const tier = getUnitTier(u);
+      unitsByTier[tier].push(u);
+    });
+
+    const result = [];
+
+    // 分别计算每个 Tier 下普通兵种的逐步解锁关卡
+    Object.keys(unitsByTier).forEach(tierKey => {
+      const tier = Number(tierKey);
+      const list = unitsByTier[tier];
+      if (list.length === 0) return;
+
+      const range = TIER_RANGES[tier] || { start: 81, end: 200 };
+      const startLevel = range.start;
+      const endLevel = range.end;
+      const length = endLevel - startLevel + 1;
+
+      // 稳定排序：为了确保每次重新生成或刷新页面时解锁规则一致，我们按战力评分排序
+      // 从而实现低战力兵种优先在前面解锁，高战力兵种后面解锁的“关卡梯度体验”
+      const sorted = [...list].sort((a, b) => {
+        const scoreA = calculatePowerScore(a);
+        const scoreB = calculatePowerScore(b);
+        if (scoreA !== scoreB) return scoreA - scoreB;
+        return String(a.id).localeCompare(String(b.id)); // ID 稳定降噪排序
+      });
+
+      // 解锁分摊算法：
+      // - 前 20% (至少 2 个) 作为本阶段初始的“基准可用怪”，直接在 startLevel（第一关）解锁
+      // - 其余怪在整个区间的前 70% 关卡区间中均匀平摊解锁，防止堆积到区间末尾解锁导致无法展示
+      const numInitial = Math.min(sorted.length, Math.max(2, Math.round(sorted.length * 0.2)));
+      
+      sorted.forEach((unit, idx) => {
+        let unlockLevel = startLevel;
+        if (idx >= numInitial) {
+          const remainingIdx = idx - numInitial;
+          const totalRemaining = sorted.length - numInitial;
+          const unlockSpan = Math.round(length * 0.7); // 在前 70% 的关卡内解锁完毕
+          const offset = totalRemaining > 1 
+            ? Math.round((remainingIdx / (totalRemaining - 1)) * unlockSpan) 
+            : 0;
+          unlockLevel = startLevel + offset;
+        }
+        
+        result.push({
+          ...unit,
+          unlockLevel
+        });
+      });
+    });
+
+    // Boss 兵种不做 unlockLevel 限制，它们只会在指定的 Boss 关卡投放
+    const bossUnits = units.filter(u => u.armyTag >= 20);
+    bossUnits.forEach(u => {
+      result.push({
+        ...u,
+        unlockLevel: 1 // 默认为 1 即可，由 Boss 关逻辑直接提取
+      });
+    });
+
+    return result;
+  }, [units]);
+
+  /**
    * 全关卡部署规划逻辑 (算法升级版)
    */
   const fullLevelPlan = useMemo(() => {
-    if (state.units.length === 0) return [];
+    if (unitsWithUnlockLevels.length === 0) return [];
 
     const template = rosterTemplates.find(t => t.id === activeTemplateId) || rosterTemplates[0];
     
-    // 用于追踪每个兵种最后出现的关卡，以保证多样性 (Recency tracking)
-    const lastSeen = {}; 
+    let previousSelected = [];
 
     return Array.from({ length: previewRange }, (_, i) => {
       const level = i + 1;
       const targetTier = getTargetTier(level);
-      const targetTierInt = Number(targetTier.replace('T', ''));
 
       // 1. 获取基础系数 (用于计算展示战力，虽不作为投放约束)
       const initialMultiplier = levelConfig.initialMultiplier || 1.0;
@@ -46,70 +127,42 @@ export const useLevelPlanning = (state, config) => {
       const budget = getLevelBudget(level, levelConfig);
       const isBossLevel = !!peak;
 
-      // 2. 预处理当前 Tier 的可用兵种池
-      const scaledUnits = state.units.map(u => {
+      // 2. 预处理当前 Tier 的可用兵种池 (结合分配好的 unlockLevel 进行攻击与生命缩放)
+      const scaledUnits = unitsWithUnlockLevels.map(u => {
         const scaled = { ...u, hp: Math.round(u.hp * hpCoeff), atk: Math.round(u.atk * atkCoeff) };
         return { ...scaled, scaledScore: calculatePowerScore(scaled) };
       });
 
       const selected = [];
 
-      // 3. 强制投放 2 个 Boss (体验优先级最高)
-      const allBosses = scaledUnits.filter(u => u.armyTag >= 20);
-      let tierBossPool = allBosses.filter(u => u.name.includes(targetTier));
-      if (tierBossPool.length === 0) tierBossPool = allBosses;
+      // 3. 强制投放 Boss (仅在 Boss 关卡进行配置)
+      if (isBossLevel) {
+        const allBosses = scaledUnits.filter(u => u.armyTag >= 20);
+        let tierBossPool = allBosses.filter(u => u.name.includes(targetTier));
+        if (tierBossPool.length === 0) tierBossPool = allBosses;
 
-      if (tierBossPool.length > 0) {
-        const numBosses = matrixConfig.minBossPerLevel || 2;
-        for (let j = 0; j < numBosses; j++) {
-          const bossIndex = (i * numBosses + j) % tierBossPool.length;
-          const boss = tierBossPool[bossIndex];
-          selected.push({ ...boss, count: 1, assignedRole: 'BOSS', isForcedBoss: true });
+        if (tierBossPool.length > 0) {
+          const numBosses = matrixConfig.minBossPerLevel || 2;
+          for (let j = 0; j < numBosses; j++) {
+            const bossIndex = (i * numBosses + j) % tierBossPool.length;
+            const boss = tierBossPool[bossIndex];
+            selected.push({ ...boss, count: 1, assignedRole: 'BOSS', isForcedBoss: true });
+          }
         }
       }
 
-      // 4. 体验驱动的普通兵种选取 (忽略 Budget 约束数量，侧重多样性)
-      // 逻辑：每个职能根据模板权重，选取“最合适”的一个兵种，赋予固定或随机的合理数量
-      Object.keys(ROLE_LABELS).map(Number).forEach(roleId => {
-        const roleWeight = template[roleId] || 0;
-        if (roleWeight <= 0) return;
+      selected.push(...allocateBudgetedRoster({
+        level,
+        budget,
+        targetTier,
+        template,
+        scaledUnits,
+        previousSelected
+      }));
 
-        const roleKey = ROLE_LABELS[roleId] || `Role-${roleId}`;
-        
-        // 筛选符合职能且符合当前 Tier 或上一 Tier (作为过渡) 的兵种
-        let pool = scaledUnits.filter(u => {
-          const roles = Array.isArray(u.roles) ? u.roles : [];
-          const matchRole = roles.includes(roleId) || roles.includes(String(roleId));
-          const isCurrentTier = u.armyTag === targetTierInt;
-          const isTransitionTier = u.armyTag === targetTierInt - 1;
-          return matchRole && (isCurrentTier || isTransitionTier);
-        });
+      previousSelected = selected.filter(unit => !unit.isForcedBoss);
 
-        if (pool.length === 0) pool = scaledUnits.filter(u => (Array.isArray(u.roles) ? u.roles : []).includes(roleId));
-        if (pool.length === 0) return;
-
-        // 多样性排序：优先选择很久没见的兵种
-        pool.sort((a, b) => (lastSeen[a.id] || 0) - (lastSeen[b.id] || 0));
-        
-        // 如果是 Tier 的前 5 关，赋予当前 Tier 兵种更高的选取权重 (引入期)
-        const isIntroductionPhase = (level - 1) % 20 < 5; 
-        const preferredPool = isIntroductionPhase ? pool.filter(u => u.armyTag === targetTierInt) : pool;
-        const candidates = preferredPool.length > 0 ? preferredPool.slice(0, 3) : pool.slice(0, 3);
-        
-        const unit = candidates[Math.floor(Math.random() * candidates.length)];
-        
-        if (unit) {
-          lastSeen[unit.id] = level;
-          // 数量计算：虽然不考虑 Budget 严格限制，但为了视觉合理性，我们使用一个“标准密度”计算
-          // 数量 = (Budget * Weight) / Score -> 向上取整，保证最低 1 个
-          let count = Math.ceil((budget * roleWeight) / unit.scaledScore);
-          if (count > 0) {
-            selected.push({ ...unit, count, assignedRole: roleKey });
-          }
-        }
-      });
-
-      return { 
+      return {
         level, 
         budget, 
         selected, 
@@ -119,7 +172,7 @@ export const useLevelPlanning = (state, config) => {
         targetTier
       };
     });
-  }, [state.units, levelConfig, previewRange, activeTemplateId, rosterTemplates, matrixConfig]);
+  }, [unitsWithUnlockLevels, levelConfig, previewRange, activeTemplateId, rosterTemplates, matrixConfig]);
 
   /**
    * 单关模拟分析逻辑

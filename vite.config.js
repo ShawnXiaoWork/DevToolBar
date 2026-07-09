@@ -13,7 +13,7 @@ const READ_ALLOWED_FILES = [...SAVE_ALLOWED_FILES, 'names.xlsx', 'name.xlsx']
 const normalizeExternalPath = (externalPathBase) => externalPathBase ? path.resolve(externalPathBase) : ''
 
 export const resolveExcelReadPath = ({ projectRoot, filename, externalPathBase, existsSync = fs.existsSync }) => {
-  if (!SAVE_ALLOWED_FILES.includes(filename)) {
+  if (!SAVE_ALLOWED_FILES.includes(filename) || ['names.xlsx', 'name.xlsx'].includes(filename)) {
     return path.resolve(projectRoot, 'public', filename)
   }
 

@@ -92,3 +92,38 @@ test('syncArmyTable defaults ArmyTag to 1 for normal units, 20 for bosses, and s
   assert.equal(soldier2.armyTag, 1); // 默认为 1
   assert.equal(soldier2.findRange, 200 * 6); // 默认 200 * 6 = 1200
 });
+
+test('syncArmyTable saves ArmyTable rows sorted by ascending Id', async () => {
+  const mockHeaders = ['Id', 'Note', 'ArmyTag', 'FindRange', 'Hp', 'Attack', 'Roles', 'Qua'];
+  const mockSheet = XLSX.utils.aoa_to_sheet([
+    ['#', '#', '#', '#', '#', '#', '#', '#'],
+    ['Id', 'Note', 'ArmyTag', 'FindRange', 'Hp', 'Attack', 'Roles', 'Qua'],
+    ['int', 'string', 'int', 'int', 'int', 'int', 'int', 'int'],
+    ['id', 'name', 'armyTag', 'findRange', 'hp', 'atk', 'roles', 'qua'],
+    [1001, '剑士模板', 11, 200, 100, 10, 0, 1],
+    [1005, '旧枪兵', 1, 200, 110, 11, 3, 1],
+    [1003, '旧弓手', 1, 200, 90, 12, 1, 1]
+  ]);
+  const mockRange = XLSX.utils.decode_range(mockSheet['!ref']);
+
+  const mockLoader = async () => ({
+    workbook: {},
+    sheet: mockSheet,
+    headers: mockHeaders,
+    range: mockRange
+  });
+
+  const mockSaver = async () => ({ success: true });
+
+  await syncArmyTable({
+    units: [
+      { id: 1004, name: '新增骑兵', hp: 130, atk: 13, roles: [2], armyTag: 1 },
+      { id: 1002, name: '新增步兵', hp: 120, atk: 12, roles: [0], armyTag: 1 }
+    ],
+    loader: mockLoader,
+    saver: mockSaver
+  });
+
+  const rows = XLSX.utils.sheet_to_json(mockSheet, { range: 3 });
+  assert.deepEqual(rows.map(row => row.id), [1001, 1002, 1003, 1004, 1005]);
+});
