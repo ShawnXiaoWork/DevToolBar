@@ -181,7 +181,6 @@ export const syncArmyTable = async ({
     'AttackFreq': (unit) => unit.atkSpeed || 1.0,
     'Speed': (unit) => unit.spd || 75,
     'AttackRange': (unit) => unit.atkRange || 100,
-    'FindRange': (unit) => (unit.detRange || 200) * 6,
     'Race': (unit) => Array.isArray(unit.roles) ? unit.roles.join('|') : unit.roles,
     'Roles': (unit) => (unit.roles && unit.roles.length > 0) ? Number(unit.roles[0]) : 0,
     'Style': (unit) => unit.style !== undefined ? Number(unit.style) : 0,

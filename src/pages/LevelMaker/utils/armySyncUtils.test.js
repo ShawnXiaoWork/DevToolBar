@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import * as XLSX from 'xlsx';
 import { syncArmyTable } from './armySyncUtils.js';
 
-test('syncArmyTable defaults ArmyTag to 1 for normal units, 20 for bosses, and scales FindRange by 6', async () => {
+test('syncArmyTable defaults ArmyTag to 1 for normal units and 20 for bosses', async () => {
   // 模拟 Excel 模版数据
-  const mockHeaders = ['Id', 'Note', 'ArmyTag', 'FindRange', 'Hp', 'Attack', 'Roles', 'Qua'];
+  const mockHeaders = ['Id', 'Note', 'ArmyTag', 'Hp', 'Attack', 'Roles', 'Qua'];
   const mockSheet = XLSX.utils.aoa_to_sheet([
-    ['#', '#', '#', '#', '#', '#', '#', '#'],
-    ['Id', 'Note', 'ArmyTag', 'FindRange', 'Hp', 'Attack', 'Roles', 'Qua'],
-    ['int', 'string', 'int', 'int', 'int', 'int', 'int', 'int'],
-    ['id', 'name', 'armyTag', 'findRange', 'hp', 'atk', 'roles', 'qua'],
-    [1001, '剑士模板', 11, 200, 100, 10, 0, 1] // 模板行
+    ['#', '#', '#', '#', '#', '#', '#'],
+    ['Id', 'Note', 'ArmyTag', 'Hp', 'Attack', 'Roles', 'Qua'],
+    ['int', 'string', 'int', 'int', 'int', 'int', 'int'],
+    ['id', 'name', 'armyTag', 'hp', 'atk', 'roles', 'qua'],
+    [1001, '剑士模板', 11, 100, 10, 0, 1] // 模板行
   ]);
   const mockRange = XLSX.utils.decode_range(mockSheet['!ref']);
 
@@ -36,7 +36,6 @@ test('syncArmyTable defaults ArmyTag to 1 for normal units, 20 for bosses, and s
       name: '普通枪兵 T1',
       hp: 120,
       atk: 12,
-      detRange: 150,
       roles: [1],
       armyTag: 11,
       qua: 2
@@ -46,7 +45,6 @@ test('syncArmyTable defaults ArmyTag to 1 for normal units, 20 for bosses, and s
       name: '极秘项目·暴君 BOSS T1',
       hp: 500,
       atk: 50,
-      detRange: 180,
       roles: [0],
       armyTag: 20,
       qua: 4
@@ -59,7 +57,6 @@ test('syncArmyTable defaults ArmyTag to 1 for normal units, 20 for bosses, and s
       roles: [2],
       armyTag: 1, // 已经是 1 了
       qua: 2
-      // 没有 detRange，应该使用默认的 200 放大 6 倍（1200）
     }
   ];
 
@@ -78,31 +75,28 @@ test('syncArmyTable defaults ArmyTag to 1 for normal units, 20 for bosses, and s
   const soldier1 = jsonRows.find(r => r.id === 10002);
   assert.ok(soldier1);
   assert.equal(soldier1.armyTag, 1); // 默认应该变 1
-  assert.equal(soldier1.findRange, 150 * 6); // 150 * 6 = 900
 
   // 验证 Boss (10003)
   const boss = jsonRows.find(r => r.id === 10003);
   assert.ok(boss);
   assert.equal(boss.armyTag, 20); // Boss 应该为 20
-  assert.equal(boss.findRange, 180 * 6); // 180 * 6 = 1080
 
   // 验证普通弓手 (10004)
   const soldier2 = jsonRows.find(r => r.id === 10004);
   assert.ok(soldier2);
   assert.equal(soldier2.armyTag, 1); // 默认为 1
-  assert.equal(soldier2.findRange, 200 * 6); // 默认 200 * 6 = 1200
 });
 
 test('syncArmyTable saves ArmyTable rows sorted by ascending Id', async () => {
-  const mockHeaders = ['Id', 'Note', 'ArmyTag', 'FindRange', 'Hp', 'Attack', 'Roles', 'Qua'];
+  const mockHeaders = ['Id', 'Note', 'ArmyTag', 'Hp', 'Attack', 'Roles', 'Qua'];
   const mockSheet = XLSX.utils.aoa_to_sheet([
-    ['#', '#', '#', '#', '#', '#', '#', '#'],
-    ['Id', 'Note', 'ArmyTag', 'FindRange', 'Hp', 'Attack', 'Roles', 'Qua'],
-    ['int', 'string', 'int', 'int', 'int', 'int', 'int', 'int'],
-    ['id', 'name', 'armyTag', 'findRange', 'hp', 'atk', 'roles', 'qua'],
-    [1001, '剑士模板', 11, 200, 100, 10, 0, 1],
-    [1005, '旧枪兵', 1, 200, 110, 11, 3, 1],
-    [1003, '旧弓手', 1, 200, 90, 12, 1, 1]
+    ['#', '#', '#', '#', '#', '#', '#'],
+    ['Id', 'Note', 'ArmyTag', 'Hp', 'Attack', 'Roles', 'Qua'],
+    ['int', 'string', 'int', 'int', 'int', 'int', 'int'],
+    ['id', 'name', 'armyTag', 'hp', 'atk', 'roles', 'qua'],
+    [1001, '剑士模板', 11, 100, 10, 0, 1],
+    [1005, '旧枪兵', 1, 110, 11, 3, 1],
+    [1003, '旧弓手', 1, 90, 12, 1, 1]
   ]);
   const mockRange = XLSX.utils.decode_range(mockSheet['!ref']);
 
