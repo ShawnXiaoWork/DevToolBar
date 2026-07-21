@@ -25,6 +25,7 @@ import { loadExcelWorkbook } from '../../utils/excelSyncUtils';
 import {
   DEFAULT_ROLE_WEIGHTS,
   DEFAULT_ROSTER_TEMPLATES,
+  DEFAULT_ROSTER_DIVERSITY_CONFIG,
   DEFAULT_VALIDATION_CONFIG,
   DEFAULT_DERIVATION_PARAMS,
   DEFAULT_MATRIX_CONFIG
@@ -115,6 +116,7 @@ const LevelMaker = () => {
   
   const [roleWeights, setRoleWeights] = useState(DEFAULT_ROLE_WEIGHTS);
   const [rosterTemplates, setRosterTemplates] = useState(DEFAULT_ROSTER_TEMPLATES);
+  const [rosterDiversityConfig] = useState(DEFAULT_ROSTER_DIVERSITY_CONFIG);
   const [activeTemplateId, setActiveTemplateId] = useState('t1');
   const [validationConfig, setValidationConfig] = useState(DEFAULT_VALIDATION_CONFIG);
   const [derivationParams, setDerivationParams] = useState(DEFAULT_DERIVATION_PARAMS);
@@ -183,6 +185,7 @@ const LevelMaker = () => {
     previewRange,
     activeTemplateId,
     rosterTemplates,
+    rosterDiversityConfig,
     matrixConfig,
     validationConfig,
     previewLevel

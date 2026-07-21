@@ -13,6 +13,7 @@ export const useLevelPlanning = (state, config) => {
     previewRange, 
     activeTemplateId, 
     rosterTemplates, 
+    rosterDiversityConfig,
     matrixConfig,
     validationConfig,
     previewLevel
@@ -110,6 +111,7 @@ export const useLevelPlanning = (state, config) => {
     const template = rosterTemplates.find(t => t.id === activeTemplateId) || rosterTemplates[0];
     
     let previousSelected = [];
+    const recentSelectedHistory = [];
 
     return Array.from({ length: previewRange }, (_, i) => {
       const level = i + 1;
@@ -157,10 +159,17 @@ export const useLevelPlanning = (state, config) => {
         targetTier,
         template,
         scaledUnits,
-        previousSelected
+        previousSelected,
+        recentSelectedHistory,
+        diversityConfig: rosterDiversityConfig
       }));
 
       previousSelected = selected.filter(unit => !unit.isForcedBoss);
+      recentSelectedHistory.unshift(previousSelected);
+      const lookbackLevels = rosterDiversityConfig?.lookbackLevels || 0;
+      if (lookbackLevels > 0 && recentSelectedHistory.length > lookbackLevels) {
+        recentSelectedHistory.length = lookbackLevels;
+      }
 
       return {
         level, 
@@ -172,7 +181,7 @@ export const useLevelPlanning = (state, config) => {
         targetTier
       };
     });
-  }, [unitsWithUnlockLevels, levelConfig, previewRange, activeTemplateId, rosterTemplates, matrixConfig]);
+  }, [unitsWithUnlockLevels, levelConfig, previewRange, activeTemplateId, rosterTemplates, rosterDiversityConfig, matrixConfig]);
 
   /**
    * 单关模拟分析逻辑

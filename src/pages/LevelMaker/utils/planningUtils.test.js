@@ -91,6 +91,37 @@ test('allocateBudgetedRoster preserves previous unit types before adding unlocke
   assert.deepEqual(secondLevel.map(unit => unit.id), ['infantry-a', 'infantry-b', 'infantry-c']);
 });
 
+test('allocateBudgetedRoster uses diversity config to reduce recent repeats', () => {
+  const units = [
+    makeUnit('infantry-a', 0, 50),
+    makeUnit('infantry-b', 0, 50),
+    makeUnit('infantry-c', 0, 50),
+    makeUnit('infantry-d', 0, 50)
+  ];
+
+  const selected = allocateBudgetedRoster({
+    level: 2,
+    budget: 120,
+    targetTier: 'T1',
+    template: { 0: 1 },
+    scaledUnits: units,
+    previousSelected: [units[0], units[1]],
+    recentSelectedHistory: [[units[0], units[1]]],
+    diversityConfig: {
+      enabled: true,
+      lookbackLevels: 3,
+      maxCarryOverRatio: 0,
+      recentUsePenalty: [0.1, 0.5, 0.75],
+      underusedBonus: 2,
+      archetypeBonus: 1,
+      randomJitter: 0,
+      maxTypesPerRole: 2
+    }
+  });
+
+  assert.deepEqual(selected.map(unit => unit.id), ['infantry-c', 'infantry-d']);
+});
+
 test('generateMatrixUnits avoids duplicate names when name pools have enough entries', () => {
   const originalRandom = Math.random;
   Math.random = () => 0;

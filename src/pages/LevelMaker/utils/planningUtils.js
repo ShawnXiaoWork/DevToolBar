@@ -131,13 +131,114 @@ const pickBudgetedTypes = (pool, roleBudget, previousSelected, targetTierInt) =>
  * 预算先按阵容模板拆到职能，再在每个职能内优先延续上一关兵种，
  * 新类型只在预算能够承载时逐步加入。
  */
+const stableNoise = (level, id) => {
+  const text = `${level}:${id}`;
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  }
+  return (Math.abs(hash) % 1000) / 1000;
+};
+
+const getRecentDistance = (unit, recentSelectedHistory, lookbackLevels) => {
+  const unitId = String(unit.id);
+  const history = (recentSelectedHistory || []).slice(0, lookbackLevels);
+  for (let index = 0; index < history.length; index++) {
+    const appeared = (history[index] || []).some(historyUnit => String(historyUnit.id) === unitId);
+    if (appeared) return index + 1;
+  }
+  return 0;
+};
+
+const getDiversityCandidateWeight = ({
+  unit,
+  level,
+  roleBudget,
+  targetTierInt,
+  roleWeight,
+  previousIds,
+  carriedCount,
+  carryLimit,
+  recentSelectedHistory,
+  diversityConfig
+}) => {
+  const score = getScore(unit);
+  const tierDistance = Math.abs(getUnitTier(unit) - targetTierInt);
+  const budgetFit = Math.max(0.2, 1 - Math.min(0.8, score / Math.max(1, roleBudget * 2)));
+  const tierFit = Math.max(0.4, 1 - tierDistance * 0.25);
+  const archetype = roleWeight > 0 ? (diversityConfig.archetypeBonus ?? 1) : 1;
+  const recentDistance = getRecentDistance(unit, recentSelectedHistory, diversityConfig.lookbackLevels ?? 0);
+  const recentPenalty = recentDistance > 0
+    ? (diversityConfig.recentUsePenalty?.[recentDistance - 1] ?? 1)
+    : (diversityConfig.underusedBonus ?? 1);
+  const carryPenalty = previousIds.has(String(unit.id)) && carriedCount >= carryLimit ? 0.05 : 1;
+  const jitter = 1 + (stableNoise(level, unit.id) - 0.5) * 2 * (diversityConfig.randomJitter ?? 0);
+
+  return budgetFit * tierFit * archetype * recentPenalty * carryPenalty * jitter;
+};
+
+const pickDiverseBudgetedTypes = ({
+  pool,
+  level,
+  roleBudget,
+  roleWeight,
+  previousSelected,
+  recentSelectedHistory,
+  targetTierInt,
+  diversityConfig
+}) => {
+  const selected = [];
+  let spent = 0;
+  let carriedCount = 0;
+  const previousIds = new Set((previousSelected || []).map(unit => String(unit.id)));
+  const maxTypes = Math.max(1, diversityConfig.maxTypesPerRole || pool.length);
+  const carryLimit = Math.max(0, Math.floor(maxTypes * (diversityConfig.maxCarryOverRatio ?? 1)));
+  const remaining = [...pool];
+
+  while (remaining.length > 0 && selected.length < maxTypes) {
+    const ordered = remaining
+      .map(unit => ({
+        unit,
+        weight: getDiversityCandidateWeight({
+          unit,
+          level,
+          roleBudget,
+          targetTierInt,
+          roleWeight,
+          previousIds,
+          carriedCount,
+          carryLimit,
+          recentSelectedHistory,
+          diversityConfig
+        })
+      }))
+      .sort((a, b) => {
+        if (b.weight !== a.weight) return b.weight - a.weight;
+        return String(a.unit.id).localeCompare(String(b.unit.id));
+      });
+
+    const next = ordered[0].unit;
+    const score = getScore(next);
+    if (selected.length > 0 && spent + score > roleBudget) break;
+
+    selected.push(next);
+    spent += score;
+    if (previousIds.has(String(next.id))) carriedCount++;
+    remaining.splice(remaining.findIndex(unit => String(unit.id) === String(next.id)), 1);
+  }
+
+  return selected;
+};
+
 export const allocateBudgetedRoster = ({
   level,
   budget,
   targetTier,
   template,
   scaledUnits,
-  previousSelected = []
+  previousSelected = [],
+  recentSelectedHistory = [],
+  diversityConfig = null
 }) => {
   const targetTierInt = Number(String(targetTier).replace('T', '')) || getUnitTier({ name: targetTier });
   const selected = [];
@@ -173,7 +274,18 @@ export const allocateBudgetedRoster = ({
     const previousForRole = previousSelected.filter(unit => (
       unit.assignedRole === roleKey || unitMatchesRole(unit, roleId)
     ));
-    const pickedTypes = pickBudgetedTypes(pool, roleBudget, previousForRole, targetTierInt);
+    const pickedTypes = diversityConfig?.enabled
+      ? pickDiverseBudgetedTypes({
+        pool,
+        level,
+        roleBudget,
+        roleWeight,
+        previousSelected: previousForRole,
+        recentSelectedHistory,
+        targetTierInt,
+        diversityConfig
+      })
+      : pickBudgetedTypes(pool, roleBudget, previousForRole, targetTierInt);
     const totalTypeScore = pickedTypes.reduce((sum, unit) => sum + getScore(unit), 0);
 
     pickedTypes.forEach(unit => {
