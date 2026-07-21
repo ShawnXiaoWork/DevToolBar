@@ -65,19 +65,14 @@ export const generateStageStepData = (fullLevelPlan) => {
 
     const isBossLevel = lp.isBossLevel || selected.some(u => u.assignedRole === 'BOSS');
     const monsterConfig = [];
-    let cumulativeDelay = 0; // 单波次敌人的默认开始间隔为 0
 
     selected.forEach((u) => {
-      const maxRow = u.maxRow || 15;
-      const spawnRates = u.spawnRates || 0.4;
       const count = u.count || 1;
-      monsterConfig.push([parseInt(u.id), count, parseFloat(cumulativeDelay.toFixed(2))]);
-      const duration = Math.ceil(count / maxRow) * spawnRates;
-      cumulativeDelay += duration + (1.2 + Math.random() * 0.8);
+      monsterConfig.push([parseInt(u.id), count]);
     });
 
     if (monsterConfig.length === 0 && selected.length > 0) {
-      monsterConfig.push([parseInt(selected[0].id), 2, 0]);
+      monsterConfig.push([parseInt(selected[0].id), 2]);
     }
 
     const finalHpCoeff = Number(stageBaseHp.toFixed(2));

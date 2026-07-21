@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { syncAllLevelTables } from './exportUtils.js';
+import { generateStageStepData, syncAllLevelTables } from './exportUtils.js';
 
 const samplePlan = [{ level: 1, hpCoeff: 1, atkCoeff: 1, selected: [] }];
 const sampleUnits = [{ id: '1002', name: 'Test Unit', hp: 10, atk: 5, roles: [1] }];
@@ -55,4 +55,23 @@ test('syncAllLevelTables reports failed table details instead of succeeding sile
   } finally {
     console.error = originalConsoleError;
   }
+});
+
+test('generateStageStepData writes Monster entries without refresh time', () => {
+  const rows = generateStageStepData([
+    {
+      level: 1,
+      hpCoeff: 1,
+      atkCoeff: 1,
+      selected: [
+        { id: '10002', count: 3 },
+        { id: '20001', count: 5 }
+      ]
+    }
+  ]);
+
+  assert.deepEqual(JSON.parse(rows[0][6]), [
+    [10002, 3],
+    [20001, 5]
+  ]);
 });
