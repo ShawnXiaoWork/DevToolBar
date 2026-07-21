@@ -33,6 +33,44 @@ const STEP_COL = {
  * 生成 StageTable 数据 (稀疏映射版)
  * 返回格式: { rowIndex: { colIndex: value } }
  */
+const FORMATION_PATTERNS = {
+  1: [[4], [3], [5]],
+  2: [[3, 4]],
+  3: [[3, 4, 10], [3, 4, 11], [4, 10, 11]],
+  4: [[3, 4, 10, 11], [2, 3, 4, 10], [3, 4, 5, 11]],
+  5: [[3, 4, 10, 11, 17], [3, 4, 5, 10, 11], [2, 3, 4, 10, 11]],
+  6: [[3, 4, 10, 11, 17, 18], [2, 3, 4, 10, 11, 17], [3, 4, 5, 10, 11, 18]],
+  7: [[3, 4, 10, 11, 17, 18, 12], [2, 3, 4, 10, 11, 17, 18]],
+  8: [[3, 4, 10, 11, 17, 18, 12, 5], [2, 3, 4, 5, 10, 11, 17, 18]],
+  9: [[3, 4, 10, 11, 17, 18, 12, 5, 19], [2, 3, 4, 5, 10, 11, 12, 17, 18]],
+  10: [[3, 4, 10, 11, 17, 18, 12, 5, 19, 2], [2, 3, 4, 5, 10, 11, 12, 17, 18, 19]]
+};
+
+const DEFAULT_FORMATION_ORDER = [
+  3, 4, 10, 11, 17, 18, 12, 5, 19, 2,
+  9, 16, 20, 6, 13, 25, 26, 24, 27, 23,
+  31, 32, 30, 33, 29, 1, 7, 8, 14, 15,
+  21, 22, 28, 34, 35
+];
+
+const getStableFormationIndex = (level, count, patternCount) => {
+  const seed = Math.abs(Number(level) || 0) * 31 + count * 17;
+  return seed % patternCount;
+};
+
+export const getMonsterFormationPositions = (level, monsterCount) => {
+  const count = Math.max(0, Number(monsterCount) || 0);
+  if (count === 0) return [];
+
+  const patterns = FORMATION_PATTERNS[Math.min(count, 10)];
+  if (patterns && count <= 10) {
+    const pattern = patterns[getStableFormationIndex(level, count, patterns.length)];
+    return pattern.slice(0, count);
+  }
+
+  return DEFAULT_FORMATION_ORDER.slice(0, Math.min(count, DEFAULT_FORMATION_ORDER.length));
+};
+
 export const generateStageTableData = (fullLevelPlan) => {
   const rows = {};
   fullLevelPlan.forEach((lp, i) => {
@@ -65,14 +103,15 @@ export const generateStageStepData = (fullLevelPlan) => {
 
     const isBossLevel = lp.isBossLevel || selected.some(u => u.assignedRole === 'BOSS');
     const monsterConfig = [];
+    const formationPositions = getMonsterFormationPositions(level, selected.length);
 
-    selected.forEach((u) => {
-      const count = u.count || 1;
-      monsterConfig.push([parseInt(u.id), count]);
+    selected.forEach((u, index) => {
+      const position = formationPositions[index] || DEFAULT_FORMATION_ORDER[index % DEFAULT_FORMATION_ORDER.length];
+      monsterConfig.push([parseInt(u.id), position]);
     });
 
     if (monsterConfig.length === 0 && selected.length > 0) {
-      monsterConfig.push([parseInt(selected[0].id), 2]);
+      monsterConfig.push([parseInt(selected[0].id), 4]);
     }
 
     const finalHpCoeff = Number(stageBaseHp.toFixed(2));

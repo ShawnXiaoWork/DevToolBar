@@ -72,6 +72,32 @@ test('generateStageStepData writes Monster entries without refresh time', () => 
 
   assert.deepEqual(JSON.parse(rows[0][6]), [
     [10002, 3],
-    [20001, 5]
+    [20001, 4]
   ]);
+});
+
+test('generateStageStepData assigns centered forward formation positions', () => {
+  const rows = generateStageStepData([
+    {
+      level: 2,
+      hpCoeff: 1,
+      atkCoeff: 1,
+      selected: [
+        { id: '10002', count: 40 },
+        { id: '20001', count: 35 },
+        { id: '30002', count: 30 },
+        { id: '40008', count: 20 },
+        { id: '50001', count: 10 },
+        { id: '60001', count: 5 }
+      ]
+    }
+  ]);
+
+  const positions = JSON.parse(rows[0][6]).map((entry) => entry[1]);
+  const rowsInGrid = positions.map((position) => ((position - 1) % 7) + 1);
+
+  assert.equal(new Set(positions).size, positions.length);
+  assert.ok(positions.every((position) => position >= 1 && position <= 35));
+  assert.ok(positions.every((position) => position <= 21));
+  assert.ok(rowsInGrid.every((row) => row >= 2 && row <= 6));
 });
