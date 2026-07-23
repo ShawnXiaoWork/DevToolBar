@@ -121,3 +121,32 @@ test('syncArmyTable saves ArmyTable rows sorted by ascending Id', async () => {
   const rows = XLSX.utils.sheet_to_json(mockSheet, { range: 3 });
   assert.deepEqual(rows.map(row => row.id), [1001, 1002, 1003, 1004, 1005]);
 });
+
+test('syncArmyTable preserves existing SkillIds values', async () => {
+  const mockHeaders = ['Id', 'Note', 'Hp', 'Attack', 'Roles', 'Qua', 'SkillIds'];
+  const mockSheet = XLSX.utils.aoa_to_sheet([
+    ['#', '#', '#', '#', '#', '#', '#'],
+    ['Id', 'Note', 'Hp', 'Attack', 'Roles', 'Qua', 'SkillIds'],
+    ['int', 'string', 'int', 'int', 'int', 'int', 'string'],
+    ['id', 'name', 'hp', 'atk', 'roles', 'qua', 'skillIds'],
+    [1001, '剑士模板', 100, 10, 0, 1, '[10010]'],
+    [1002, '已有弓手', 90, 12, 1, 1, '[77777]']
+  ]);
+  const mockRange = XLSX.utils.decode_range(mockSheet['!ref']);
+
+  await syncArmyTable({
+    units: [
+      { id: 1002, name: '已有弓手', hp: 95, atk: 13, roles: [1], commonSkill: 30010 }
+    ],
+    loader: async () => ({
+      workbook: {},
+      sheet: mockSheet,
+      headers: mockHeaders,
+      range: mockRange
+    }),
+    saver: async () => ({ success: true })
+  });
+
+  const rows = XLSX.utils.sheet_to_json(mockSheet, { range: 3 });
+  assert.equal(rows.find(row => row.id === 1002).skillIds, '[77777]');
+});

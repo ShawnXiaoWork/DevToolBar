@@ -30,7 +30,6 @@ const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
       'Name': "armyName.1001", 'Description': "armyDescription.1001",
       'DieSfx': "[101,102,103,104,105,106,107,108,109]", 'RecruitingSfx': "[1002]",
       'Skill0Sfx': "[21,22,23,24,25,26,27,28]", 'Skill1Sfx': "[-1]",
-      'CommonSkill': 10010,
       'Resistance': "[0.1,0.1,0,0,0,0]", 'BuffResistance': "[0,0,0,0]",
       'FatherHpRate': 0, 'FatherAttackRate': 0, 'Stability': 1
     };
@@ -81,17 +80,6 @@ const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
         if (state.units.length === 0) {
           const objects = XLSX.utils.sheet_to_json(sheet);
           const units = objects.map(row => {
-            const skillVal = row.SkillIds || row.CommonSkill || row.UnlockSkillOrigin || '';
-            let commonSkill = 10010;
-            if (typeof skillVal === 'string' && skillVal.startsWith('[') && skillVal.endsWith(']')) {
-              try {
-                const arr = JSON.parse(skillVal);
-                if (Array.isArray(arr) && arr.length > 0) commonSkill = Number(arr[0]);
-              } catch(e) {}
-            } else if (!isNaN(skillVal) && skillVal !== '') {
-              commonSkill = Number(skillVal);
-            }
-
             return {
               id: row.Id || row.id,
               name: row.Name || row.name || row.Note,
@@ -103,7 +91,6 @@ const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
               spd: Number(row.Speed || 75),
               roles: row.Race ? String(row.Race).split('|').map(r => isNaN(r) ? r.trim() : Number(r)) : [],
               armyTag: Number(row.ArmyTag || 11),
-              commonSkill: commonSkill,
               maxRow: Number(row.MaxRow || 15),
               spawnRates: Number(row.SpawnRates || 0.4),
               style: row.Style !== undefined ? Number(row.Style) : 0,
@@ -220,18 +207,6 @@ const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
           const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
           importedUnits = jsonData.map(row => {
-            // 解析 SkillIds，可能是 "[10010]" 或 "10010" 或 []
-            let skillVal = row.SkillIds || row.CommonSkill || row.commonSkill || row.UnlockSkillOrigin || '';
-            let commonSkill = 10010;
-            if (typeof skillVal === 'string' && skillVal.startsWith('[') && skillVal.endsWith(']')) {
-              try {
-                const arr = JSON.parse(skillVal);
-                if (Array.isArray(arr) && arr.length > 0) commonSkill = Number(arr[0]);
-              } catch(e) {}
-            } else if (!isNaN(skillVal) && skillVal !== '') {
-              commonSkill = Number(skillVal);
-            }
-
             return {
               id: row.Id || row.id || `unit_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
               name: row.Name || row.name || row.Note || '未命名',
@@ -244,7 +219,6 @@ const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
               skillPower: Number(row.skillPower || row.SkillPower || 0),
               roles: row.Race ? String(row.Race).split('|').map(r => isNaN(r) ? r.trim() : Number(r)) : (row.roles ? String(row.roles).split('|').map(r => isNaN(r) ? r.trim() : Number(r)) : []),
               armyTag: Number(row.ArmyTag || row.armyTag || 11),
-              commonSkill: commonSkill,
               spawnWeight: Number(row.spawnWeight || row.SpawnWeight || 50)
             };
           }).filter(u => u.name !== '未命名' && (u.hp > 0 || u.atk > 0));
@@ -291,7 +265,6 @@ const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
         'Race': Array.isArray(u.roles) ? u.roles.join('|') : u.roles,
         'Icon': `m${u.id}`,
         'Prefab': u.prefab || 10001,
-        'SkillIds': `[${u.commonSkill || 10010}]`,
         'Cost': score
       };
 

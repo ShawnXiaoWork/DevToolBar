@@ -187,7 +187,6 @@ export const syncArmyTable = async ({
     'Qua': (unit) => unit.qua !== undefined ? Number(unit.qua) : 1,
     'Icon': (unit) => `m${unit.id}`,
     'Prefab': (unit) => unit.prefab || 10001,
-    'SkillIds': (unit) => `[${unit.commonSkill || 10010}]`,
     'Cost': (unit) => calculatePowerScore(unit)
   };
 
