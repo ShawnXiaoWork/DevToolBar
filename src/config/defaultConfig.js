@@ -36,7 +36,7 @@ export const DEFAULT_LEVEL_CONFIG = {
 export const DEFAULT_DERIVATION_PARAMS = {
   baseHp: 100,                 // 基础生命
   baseAtk: 15,                // 基础攻击
-  baseSpd: 75,                // 基础移动速度
+  baseSpd: 150,                // 基础移动速度
   baseSkillPower: 0,          // 基础技能强度
   targetRole: 0,              // 默认职能 (Tank)
   unitName: '衍生单位'          // 默认前缀名称
@@ -47,10 +47,10 @@ export const DEFAULT_DERIVATION_PARAMS = {
 // ----------------------------------------------------
 export const DEFAULT_ROLE_WEIGHTS = {
   0: { hp: 1.5, atk: 0.6, cc: 0, atkSpeed: 1.0, atkRange: 100, detRange: 200 },  // 步兵
-  1: { hp: 0.6, atk: 1.4, cc: 0, atkSpeed: 1.8, atkRange: 1200, detRange: 700 }, // 弓箭手
+  1: { hp: 0.6, atk: 1.4, cc: 0, atkSpeed: 1.8, atkRange: 2200, detRange: 700 }, // 弓箭手
   2: { hp: 1.2, atk: 1.1, cc: 0, atkSpeed: 1.2, atkRange: 120, detRange: 220 },  // 骑兵
   3: { hp: 1.0, atk: 1.0, cc: 0, atkSpeed: 1.1, atkRange: 150, detRange: 250 },  // 长枪兵
-  4: { hp: 0.7, atk: 1.2, cc: 0.5, atkSpeed: 1.3, atkRange: 1000, detRange: 600 }, // 法师 (预留)
+  4: { hp: 0.7, atk: 1.2, cc: 0.5, atkSpeed: 1.3, atkRange: 2000, detRange: 600 }, // 法师 (预留)
   5: { hp: 0.8, atk: 0.5, cc: 0.8, atkSpeed: 1.2, atkRange: 400, detRange: 500 }  // 辅助 (预留)
 };
 
