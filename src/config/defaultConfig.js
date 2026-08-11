@@ -36,7 +36,7 @@ export const DEFAULT_LEVEL_CONFIG = {
 export const DEFAULT_DERIVATION_PARAMS = {
   baseHp: 100,                 // 基础生命
   baseAtk: 15,                // 基础攻击
-  baseSpd: 500,                // 基础移动速度
+  baseSpd: 300,                // 基础移动速度
   minSpdMultiplier: 0.65,      // 全局最低移动速度倍率，防止生成速度过慢
   maxSpdMultiplier: 1.35,      // 全局最高移动速度倍率，防止生成速度过快
   baseSkillPower: 0,          // 基础技能强度
