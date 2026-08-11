@@ -150,3 +150,49 @@ test('syncArmyTable preserves existing SkillIds values', async () => {
   const rows = XLSX.utils.sheet_to_json(mockSheet, { range: 3 });
   assert.equal(rows.find(row => row.id === 1002).skillIds, '[77777]');
 });
+
+test('syncArmyTable fills new rows from the closest same-role template without blanks', async () => {
+  const mockHeaders = ['Id', 'Note', 'Roles', 'ArmyTag', 'Qua', 'Hp', 'Attack', 'HPGrow', 'SkillIds', 'FirstTargetRules', 'Aim'];
+  const mockSheet = XLSX.utils.aoa_to_sheet([
+    ['#', '#', '#', '#', '#', '#', '#', '#', '#', '#', '#'],
+    mockHeaders,
+    ['int', 'string', 'int', 'int', 'int', 'int', 'int', 'string', 'string', 'string', 'string'],
+    ['id', 'name', 'roles', 'armyTag', 'qua', 'hp', 'attack', 'hpGrow', 'skillIds', 'firstTargetRules', 'aim'],
+    [10001, '步兵模板', 0, 1, 3, 100, 10, '[[步兵成长]]', '[步兵技能]', '2|1', null],
+    [50001, '法师 T1', 4, 1, 3, 80, 20, '[[法师成长]]', '[法师T1技能]', '9|7', null],
+    [50002, '法师 T2', 4, 1, 4, 120, 30, null, '[法师T2技能]', null, null]
+  ]);
+  const mockRange = XLSX.utils.decode_range(mockSheet['!ref']);
+
+  await syncArmyTable({
+    units: [
+      { id: 50002, name: '法师 T2', hp: 120, atk: 30, roles: [4], armyTag: 1, qua: 4, style: 1 },
+      { id: 50003, name: '新法师 T2', hp: 100, atk: 20, roles: [4], armyTag: 1, qua: 4, style: 1 }
+    ],
+    loader: async () => ({
+      workbook: {},
+      sheet: mockSheet,
+      headers: mockHeaders,
+      range: mockRange
+    }),
+    saver: async () => ({ success: true })
+  });
+
+  const rows = XLSX.utils.sheet_to_json(mockSheet, { range: 3 });
+  const existingMage = rows.find(row => row.id === 50002);
+  const newMage = rows.find(row => row.id === 50003);
+  assert.equal(existingMage.skillIds, '[法师T2技能]');
+  assert.equal(existingMage.hpGrow, '[[法师成长]]');
+  assert.equal(existingMage.firstTargetRules, '9|7');
+  assert.equal(existingMage.aim, '[]');
+  assert.equal(newMage.skillIds, '[法师T2技能]');
+  assert.equal(newMage.hpGrow, '[[法师成长]]');
+  assert.equal(newMage.firstTargetRules, '9|7');
+  assert.equal(newMage.aim, '[]');
+  assert.equal(Object.keys(newMage).length, mockHeaders.length);
+  Object.entries(newMage).forEach(([header, value]) => {
+    assert.notEqual(value, undefined, `${header} should be populated`);
+    assert.notEqual(value, null, `${header} should be populated`);
+    assert.notEqual(value, '', `${header} should be populated`);
+  });
+});

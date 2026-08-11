@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { allocateBudgetedRoster, generateMatrixUnits } from './planningUtils.js';
+import { allocateBudgetedRoster, calculateUnitSpeed, generateMatrixUnits } from './planningUtils.js';
 
 const roleWeights = {
   1: { hp: 1, atk: 1, cc: 0, atkSpeed: 1, atkRange: 100, detRange: 200 }
@@ -10,8 +10,37 @@ const roleWeights = {
 const derivationParams = {
   baseHp: 10,
   baseAtk: 10,
-  baseSpd: 75
+  baseSpd: 75,
+  minSpdMultiplier: 0.65,
+  maxSpdMultiplier: 1.35
 };
+
+test('calculateUnitSpeed keeps default role ranges ordered at both endpoints', () => {
+  const speedParams = { baseSpd: 300, minSpdMultiplier: 0.65, maxSpdMultiplier: 1.35 };
+  const orderedRanges = [
+    { spdMin: 0.68, spdMax: 0.76 }, // 法师
+    { spdMin: 0.82, spdMax: 0.88 }, // 弓箭手
+    { spdMin: 0.92, spdMax: 0.98 }, // 长枪兵
+    { spdMin: 1.02, spdMax: 1.08 }, // 步兵
+    { spdMin: 1.20, spdMax: 1.28 }  // 骑兵
+  ];
+
+  const ranges = orderedRanges.map(weight => ({
+    min: calculateUnitSpeed(speedParams, weight, 0),
+    max: calculateUnitSpeed(speedParams, weight, 1)
+  }));
+
+  ranges.slice(1).forEach((range, index) => {
+    assert.ok(ranges[index].max < range.min);
+  });
+});
+
+test('calculateUnitSpeed clamps role ranges to global speed limits', () => {
+  const speedParams = { baseSpd: 300, minSpdMultiplier: 0.8, maxSpdMultiplier: 1.2 };
+
+  assert.equal(calculateUnitSpeed(speedParams, { spdMin: 0.1, spdMax: 0.2 }, 0), 240);
+  assert.equal(calculateUnitSpeed(speedParams, { spdMin: 2, spdMax: 3 }, 1), 360);
+});
 
 const namesPool = {
   1: {

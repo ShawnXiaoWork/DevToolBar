@@ -2,6 +2,105 @@ import * as XLSX from 'xlsx';
 import { loadExcelWorkbook, syncDataToSheet, saveExcelWorkbook } from '../../../utils/excelSyncUtils.js';
 import { calculatePowerScore } from './planningUtils.js';
 
+const hasArmyTableValue = (value) => value !== undefined && value !== null && value !== '';
+
+const getUnitPrimaryRole = (unit) => {
+  const role = Array.isArray(unit?.roles) ? Number(unit.roles[0]) : Number(unit?.roles);
+  return Number.isFinite(role) ? role : undefined;
+};
+
+const getRowPrimaryRole = (row, headerIndexes) => {
+  const rolesValue = row[headerIndexes.roles];
+  const raceValue = row[headerIndexes.race];
+  const role = Number(hasArmyTableValue(rolesValue) ? rolesValue : raceValue);
+  return Number.isFinite(role) ? role : undefined;
+};
+
+const getArmyTypeFallback = (type) => {
+  const normalizedType = String(type || '').trim().toLowerCase();
+  if (normalizedType === 'int' || normalizedType === 'float' || normalizedType === 'number') return 0;
+  return '[]';
+};
+
+/**
+ * 为新增行或已有行的空字段收集未显式生成字段的默认值。
+ * 优先同职业、同品质且字段最完整的已有行，再逐步回退到其他已有数据。
+ */
+export const buildArmyTemplateDefaults = ({
+  headers,
+  rows,
+  headerTypes = [],
+  unit,
+  fallback = {}
+}) => {
+  const idIndex = headers.indexOf('Id');
+  const headerIndexes = {
+    roles: headers.indexOf('Roles'),
+    race: headers.indexOf('Race'),
+    qua: headers.indexOf('Qua'),
+    armyTag: headers.indexOf('ArmyTag'),
+    style: headers.indexOf('Style')
+  };
+  const targetRole = getUnitPrimaryRole(unit);
+  const targetQua = Number(unit?.qua);
+  const targetStyle = Number(unit?.style);
+  const targetIsBoss = Number(unit?.armyTag) >= 20;
+
+  const candidates = (rows || [])
+    .map((row, index) => {
+      const id = idIndex === -1 ? undefined : row[idIndex];
+      if (!hasArmyTableValue(id)) return null;
+
+      const role = getRowPrimaryRole(row, headerIndexes);
+      const qua = Number(row[headerIndexes.qua]);
+      const style = Number(row[headerIndexes.style]);
+      const isBoss = Number(row[headerIndexes.armyTag]) >= 20;
+      const completeness = headers.reduce(
+        (count, header, columnIndex) => count + (header && hasArmyTableValue(row[columnIndex]) ? 1 : 0),
+        0
+      );
+
+      return {
+        row,
+        index,
+        bossMismatch: isBoss === targetIsBoss ? 0 : 1,
+        roleMismatch: role === targetRole ? 0 : 1,
+        quaDistance: Number.isFinite(targetQua) && Number.isFinite(qua) ? Math.abs(qua - targetQua) : 999,
+        styleMismatch: Number.isFinite(targetStyle) && Number.isFinite(style) && style === targetStyle ? 0 : 1,
+        completeness
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (
+      a.bossMismatch - b.bossMismatch
+      || a.roleMismatch - b.roleMismatch
+      || a.quaDistance - b.quaDistance
+      || a.styleMismatch - b.styleMismatch
+      || b.completeness - a.completeness
+      || a.index - b.index
+    ));
+
+  const defaults = {};
+  candidates.forEach(candidate => {
+    headers.forEach((header, columnIndex) => {
+      if (!header || header === '#' || hasArmyTableValue(defaults[header])) return;
+      const value = candidate.row[columnIndex];
+      if (hasArmyTableValue(value)) defaults[header] = value;
+    });
+  });
+
+  headers.forEach((header, columnIndex) => {
+    if (!header || header === '#' || hasArmyTableValue(defaults[header])) return;
+    if (hasArmyTableValue(fallback?.[header])) {
+      defaults[header] = fallback[header];
+    } else {
+      defaults[header] = getArmyTypeFallback(headerTypes[columnIndex]);
+    }
+  });
+
+  return defaults;
+};
+
 const inferRoleFromName = (name) => {
   const noteVal = name || '';
   if (noteVal.match(/步|盾|勇|士|卫|禁|斯巴达/)) return 0; // 步兵
@@ -168,6 +267,36 @@ export const syncArmyTable = async ({
   cleanLegacyArmyRows({ sheet, headers, range, roleWeights, derivationParams });
 
   const cleanedUnits = units.map(unit => cleanUnitForArmyTable(unit, roleWeights, derivationParams));
+  const fullTableData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+  const idColumnIndex = headers.indexOf('Id');
+  const existingRowsById = new Map(
+    fullTableData
+      .slice(4)
+      .filter(row => idColumnIndex !== -1 && hasArmyTableValue(row[idColumnIndex]))
+      .map(row => [String(row[idColumnIndex]), row])
+  );
+  const dataToSync = cleanedUnits.map(unit => {
+    const templateDefaults = buildArmyTemplateDefaults({
+      headers,
+      rows: fullTableData.slice(4),
+      headerTypes: fullTableData[2] || [],
+      unit
+    });
+    const existingRow = existingRowsById.get(String(unit.id));
+    const inheritedDefaults = existingRow
+      ? Object.fromEntries(
+        Object.entries(templateDefaults).filter(([header]) => {
+          const columnIndex = headers.indexOf(header);
+          return columnIndex !== -1 && !hasArmyTableValue(existingRow[columnIndex]);
+        })
+      )
+      : templateDefaults;
+
+    return {
+      ...inheritedDefaults,
+      ...unit
+    };
+  });
   const mapping = {
     'Id': 'id',
     'Note': 'name',
@@ -193,7 +322,7 @@ export const syncArmyTable = async ({
   syncDataToSheet({
     sheet,
     headers,
-    dataToSync: cleanedUnits,
+    dataToSync,
     range,
     config: {
       idField: 'Id',

@@ -6,7 +6,7 @@ import UnitFilters from './UnitFilters';
 import UnitTable from './UnitTable';
 import UnitEditor from './UnitEditor';
 import { calculatePowerScore } from '../../utils/planningUtils';
-import { syncArmyTable } from '../../utils/armySyncUtils';
+import { buildArmyTemplateDefaults, syncArmyTable } from '../../utils/armySyncUtils';
 
 const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
   const [editingUnit, setEditingUnit] = useState(null);
@@ -248,6 +248,13 @@ const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
     // 处理兵种数据
     unitsData.forEach((u, idx) => {
       const score = calculatePowerScore(u);
+      const inheritedDefaults = buildArmyTemplateDefaults({
+        headers: tableHeaders,
+        rows: fullTableData.slice(4),
+        headerTypes: fullTableData[2] || [],
+        unit: u,
+        fallback: default1001
+      });
       const baseMap = {
         '#': idx + 1,
         'Id': u.id,
@@ -268,7 +275,7 @@ const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
         'Cost': score
       };
 
-      const mergedData = { ...default1001, ...baseMap };
+      const mergedData = { ...inheritedDefaults, ...baseMap };
 
       // 按照 tableHeaders 的顺序生成这一行的数据
       const row = tableHeaders.map(h => {

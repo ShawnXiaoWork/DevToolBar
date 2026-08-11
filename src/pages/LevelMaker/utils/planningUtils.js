@@ -93,6 +93,32 @@ const unitMatchesRole = (unit, roleId) => {
 
 const getScore = (unit) => Math.max(1, unit.scaledScore || calculatePowerScore(unit));
 
+/**
+ * 根据基础速度和职业速度区间生成移动速度，并限制在全局安全范围内。
+ */
+export const calculateUnitSpeed = (derivationParams, roleWeight, randomValue = Math.random()) => {
+  const baseSpd = Math.max(0, Number(derivationParams?.baseSpd) || 0);
+  const configuredGlobalMin = Number(derivationParams?.minSpdMultiplier);
+  const configuredGlobalMax = Number(derivationParams?.maxSpdMultiplier);
+  const globalMinMultiplier = Number.isFinite(configuredGlobalMin)
+    ? Math.max(0, configuredGlobalMin)
+    : 0.65;
+  const globalMaxMultiplier = Number.isFinite(configuredGlobalMax)
+    ? Math.max(globalMinMultiplier, configuredGlobalMax)
+    : 1.35;
+  const configuredMin = Number(roleWeight?.spdMin);
+  const configuredMax = Number(roleWeight?.spdMax);
+  const roleMinMultiplier = Number.isFinite(configuredMin) ? configuredMin : 1;
+  const roleMaxMultiplier = Number.isFinite(configuredMax) ? configuredMax : roleMinMultiplier;
+  const orderedRoleMin = Math.min(roleMinMultiplier, roleMaxMultiplier);
+  const orderedRoleMax = Math.max(roleMinMultiplier, roleMaxMultiplier);
+  const effectiveMin = Math.min(globalMaxMultiplier, Math.max(globalMinMultiplier, orderedRoleMin));
+  const effectiveMax = Math.min(globalMaxMultiplier, Math.max(effectiveMin, orderedRoleMax));
+  const safeRandomValue = Math.min(1, Math.max(0, Number(randomValue) || 0));
+
+  return Math.round(baseSpd * (effectiveMin + (effectiveMax - effectiveMin) * safeRandomValue));
+};
+
 const sortRosterCandidates = (units, targetTierInt) => [...units].sort((a, b) => {
   const tierDelta = Math.abs(getUnitTier(a) - targetTierInt) - Math.abs(getUnitTier(b) - targetTierInt);
   if (tierDelta !== 0) return tierDelta;
@@ -394,7 +420,7 @@ export const generateMatrixUnits = (config, roleWeights, derivationParams, exist
         atkSpeed: Number((weights.atkSpeed * (0.9 + Math.random() * 0.2)).toFixed(2)),
         atkRange: Math.round(weights.atkRange * (0.9 + Math.random() * 0.2)),
         detRange: Math.round(weights.detRange * (0.9 + Math.random() * 0.2)),
-        spd: derivationParams.baseSpd + Math.floor(Math.random() * 5),
+        spd: calculateUnitSpeed(derivationParams, weights),
         skillPower: Math.round(weights.cc * 100 + (tier - 1) * 20 + (isBoss ? 50 : 0)),
         commonSkill: ROLE_COMMON_SKILLS[role] || 10010,
         roles: [role],

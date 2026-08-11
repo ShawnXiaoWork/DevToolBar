@@ -36,7 +36,9 @@ export const DEFAULT_LEVEL_CONFIG = {
 export const DEFAULT_DERIVATION_PARAMS = {
   baseHp: 100,                 // 基础生命
   baseAtk: 15,                // 基础攻击
-  baseSpd: 150,                // 基础移动速度
+  baseSpd: 500,                // 基础移动速度
+  minSpdMultiplier: 0.65,      // 全局最低移动速度倍率，防止生成速度过慢
+  maxSpdMultiplier: 1.35,      // 全局最高移动速度倍率，防止生成速度过快
   baseSkillPower: 0,          // 基础技能强度
   targetRole: 0,              // 默认职能 (Tank)
   unitName: '衍生单位'          // 默认前缀名称
@@ -46,12 +48,12 @@ export const DEFAULT_DERIVATION_PARAMS = {
 // 3. 兵种职能系数权重 (Role Weights)
 // ----------------------------------------------------
 export const DEFAULT_ROLE_WEIGHTS = {
-  0: { hp: 1.5, atk: 0.6, cc: 0, atkSpeed: 1.0, atkRange: 100, detRange: 200 },  // 步兵
-  1: { hp: 0.6, atk: 1.4, cc: 0, atkSpeed: 1.8, atkRange: 2200, detRange: 700 }, // 弓箭手
-  2: { hp: 1.2, atk: 1.1, cc: 0, atkSpeed: 1.2, atkRange: 120, detRange: 220 },  // 骑兵
-  3: { hp: 1.0, atk: 1.0, cc: 0, atkSpeed: 1.1, atkRange: 150, detRange: 250 },  // 长枪兵
-  4: { hp: 0.7, atk: 1.2, cc: 0.5, atkSpeed: 1.3, atkRange: 2000, detRange: 600 }, // 法师 (预留)
-  5: { hp: 0.8, atk: 0.5, cc: 0.8, atkSpeed: 1.2, atkRange: 400, detRange: 500 }  // 辅助 (预留)
+  0: { hp: 1.5, atk: 0.6, cc: 0, atkSpeed: 1.0, atkRange: 100, detRange: 200, spdMin: 1.02, spdMax: 1.08 },  // 步兵
+  1: { hp: 0.6, atk: 1.4, cc: 0, atkSpeed: 1.8, atkRange: 2200, detRange: 700, spdMin: 0.82, spdMax: 0.88 }, // 弓箭手
+  2: { hp: 1.2, atk: 1.1, cc: 0, atkSpeed: 1.2, atkRange: 120, detRange: 220, spdMin: 1.20, spdMax: 1.28 },  // 骑兵
+  3: { hp: 1.0, atk: 1.0, cc: 0, atkSpeed: 1.1, atkRange: 150, detRange: 250, spdMin: 0.92, spdMax: 0.98 },  // 长枪兵
+  4: { hp: 0.7, atk: 1.2, cc: 0.5, atkSpeed: 1.3, atkRange: 2000, detRange: 600, spdMin: 0.68, spdMax: 0.76 }, // 法师 (预留)
+  5: { hp: 0.8, atk: 0.5, cc: 0.8, atkSpeed: 1.2, atkRange: 400, detRange: 500, spdMin: 0.76, spdMax: 0.82 }  // 辅助 (预留)
 };
 
 // ----------------------------------------------------
@@ -60,7 +62,7 @@ export const DEFAULT_ROLE_WEIGHTS = {
 export const DEFAULT_MATRIX_CONFIG = {
   totalUnits: 200,             // 兵种建模库数量 (取代原本 totalLevels/updateFrequency 计算方式)
   randomness: 0.2,            // 属性随机波动范围 (0.2=上下浮动20%)
-  roleDistribution: { 0: 0.3, 1: 0.3, 2: 0.2, 3: 0.2, 4: 0.0, 5: 0.0 }, // 各个兵种的数量比例 (0: 步兵, 1: 弓箭手, 2: 骑兵, 3: 长枪兵, 4: 法师, 5: 辅助)
+  roleDistribution: { 0: 0.25, 1: 0.25, 2: 0.2, 3: 0.15, 4: 0.15, 5: 0.0 }, // 各个兵种的数量比例 (0: 步兵, 1: 弓箭手, 2: 骑兵, 3: 长枪兵, 4: 法师, 5: 辅助)
   bossFrequency: 5,           // 每x个兵种中包含一个Boss
   minBossPerLevel: 2          // Boss关卡的最小同类Boss数量
 };
