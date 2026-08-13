@@ -1,62 +1,21 @@
-# DevToolbox
+# PlayPulse
 
-一个为开发者设计的实用工具箱，包含时间戳转换器和 JSON 格式化工具。本项目基于 React + Vite 构建，并支持使用 Tauri 打包为原生桌面应用。
+面向游戏开发者的 Google Play 市场雷达。通过实时免费榜、畅销榜、付费榜与近期新游信号，快速识别榜单上升、突然爆发及值得拆解的产品方向。
 
-## 开发环境准备
+首页指标和机会结论均可继续展开：查看对应游戏清单、跨榜表现、上榜依据、公开商店信息，并可跳转 Google Play 或加入本机关注列表。
 
-在开始之前，请确保您的系统已安装以下环境：
-
-1.  **Node.js** (推荐 v18+)
-2.  **Rust** (仅 Tauri 构建需要)
-    *   Windows: 下载安装 [Rustup](https://rustup.rs/)
-    *   macOS/Linux: 运行 `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-
-## 安装依赖
+## 本地运行
 
 ```bash
 npm install
-```
-
-## 运行 Web 版本
-
-如果您只需要在浏览器中运行：
-
-```bash
 npm run dev
 ```
 
-打开浏览器访问显示的本地地址 (通常是 `http://localhost:1420`)。
-
-## 运行桌面版本 (Tauri)
-
-### 开发模式
-
-此模式支持热重载：
+生产构建与运行：
 
 ```bash
-npm run tauri dev
+npm run build
+npm start
 ```
 
-首次运行需要编译 Rust 后端，可能需要几分钟时间。
-
-### 打包发布
-
-构建生产环境的安装包（.exe, .dmg, .deb）：
-
-```bash
-npm run tauri build
-```
-
-构建产物将位于 `src-tauri/target/release/bundle/` 目录下。
-
-## 项目结构
-
-*   `src-tauri/`: Tauri 的后端配置和 Rust 代码。
-*   `index.html`: Web 应用入口。
-*   `package.json`: 项目依赖和脚本配置。
-*   `vite.config.ts`: 前端构建配置。
-
-## 常见问题
-
-*   **图标缺失**: 默认配置使用了 Tauri 的默认图标。如果打包时提示找不到图标，请确保 `src-tauri/icons` 目录下存在图标文件，或者通过 `src-tauri/tauri.conf.json` 修改路径。
-*   **权限问题**: 如果剪贴板复制功能在打包后失效，请检查 `src-tauri/tauri.conf.json` 中的 `allowlist` 是否开启了 `clipboard` 权限。
+数据来自 `google-play-scraper` 获取的 Google Play 公开信息。趋势基于浏览器本机保存的同市场、同品类历史快照；首次访问会建立基线。畅销榜是相对排名信号，不代表精确收入估算。
