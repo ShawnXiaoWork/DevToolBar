@@ -48,3 +48,14 @@ test('resolveExcelReadPath reads names.xlsx from public even when external path 
 
   assert.equal(targetPath, '/project/public/names.xlsx');
 });
+
+test('LuckyDrawTable.xlsx uses the configured external data table directory', () => {
+  const targetPath = resolveExcelReadPath({
+    projectRoot: '/project',
+    filename: 'LuckyDrawTable.xlsx',
+    externalPathBase: '/external',
+    existsSync: target => target === '/external' || target === '/external/LuckyDrawTable.xlsx'
+  });
+
+  assert.equal(targetPath, '/external/LuckyDrawTable.xlsx');
+});
