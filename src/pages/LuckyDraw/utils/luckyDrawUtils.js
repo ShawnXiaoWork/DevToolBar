@@ -55,6 +55,35 @@ export const parseItemTable = (fullData, headers = fullData?.[1] || []) => {
   }).filter(Boolean).sort((a, b) => a.id - b.id)
 }
 
+export const parseArmyTable = (fullData, headers = fullData?.[1] || []) => {
+  const normalizedHeaders = headers.map(header => String(header || '').toLowerCase())
+  const indexOf = name => normalizedHeaders.indexOf(name.toLowerCase())
+  const idIndex = indexOf('id')
+  const noteIndex = indexOf('note')
+  const rolesIndex = indexOf('roles')
+  const armyTagIndex = indexOf('armytag')
+  const qualityIndex = indexOf('qua')
+  const iconIndex = indexOf('icon')
+  const nameIndex = indexOf('name')
+
+  if (idIndex < 0) throw new Error('ArmyTable.xlsx 缺少 Id 列')
+
+  return (fullData || []).slice(4).map(row => {
+    if (row[idIndex] === undefined || row[idIndex] === null || row[idIndex] === '') return null
+    const id = Number(row[idIndex])
+    if (!Number.isInteger(id)) return null
+    return {
+      id,
+      note: row[noteIndex] || row[nameIndex] || `未命名_${id}`,
+      name: row[nameIndex] || '',
+      icon: row[iconIndex] || '',
+      type: toNumber(row[rolesIndex]),
+      subType: toNumber(row[armyTagIndex]),
+      quality: toNumber(row[qualityIndex])
+    }
+  }).filter(Boolean).sort((a, b) => a.id - b.id)
+}
+
 export const parseLuckyDrawTable = (fullData, headers = fullData?.[1] || []) => {
   const headerIndex = Object.fromEntries(headers.map((header, index) => [header, index]))
   if (headerIndex.Id === undefined) throw new Error('LuckyDrawTable.xlsx 缺少 Id 列')
@@ -132,6 +161,33 @@ export const allocateIntegerWeights = (entries, totalWeight, scoreOf) => {
   allocations.sort((a, b) => b.remainder - a.remainder || a.id - b.id)
   for (let index = 0; index < remaining; index += 1) allocations[index % allocations.length].weight += 1
   return new Map(allocations.map(entry => [entry.id, entry.weight]))
+}
+
+const LUCKY_DRAW_QUALITY_DECAY = 2.5
+
+export const buildInitialWeightConfig = (items, selectedIds, totalWeight = 10000) => {
+  const selectedSet = new Set([...selectedIds].map(Number))
+  const selected = items.filter(item => selectedSet.has(item.id))
+  const qualities = [...new Set(selected.map(item => item.quality))].sort((a, b) => a - b)
+  const highestQuality = qualities.at(-1) ?? 0
+  const qualityAllocations = allocateIntegerWeights(
+    qualities.map(quality => ({ id: quality })),
+    totalWeight,
+    entry => LUCKY_DRAW_QUALITY_DECAY ** (highestQuality - entry.id)
+  )
+  const qualityWeights = Object.fromEntries(qualities.map(quality => [quality, qualityAllocations.get(quality)]))
+
+  const ids = [...new Set(selected.map(item => item.id))].sort((a, b) => a - b)
+  const ranges = ids.reduce((result, id) => {
+    const last = result[result.length - 1]
+    if (last && id === last.max + 1) last.max = id
+    else result.push({ min: id, max: id })
+    return result
+  }, [])
+  const rangeAllocations = allocateIntegerWeights(ranges.map((range, index) => ({ ...range, id: index })), totalWeight, () => 1)
+  const rangeRules = ranges.map((range, index) => ({ ...range, mode: 'group', weight: rangeAllocations.get(index) }))
+
+  return { qualityWeights, rangeRules }
 }
 
 const matchingRangeRule = (item, rules) => [...(rules || [])]
@@ -243,14 +299,15 @@ export const validateDraw = draw => {
   if (!Number.isInteger(Number(draw.id))) errors.push('奖池 Id 必须是整数')
   if (!draw.normalRewards.length) errors.push('普通奖池不能为空')
   const inspectPool = (label, rewards) => {
-    const ids = new Set()
+    const rewardKeys = new Set()
     rewards.forEach((entry, index) => {
       const [id, quantity, weight] = entry
       if (!Number.isInteger(Number(id))) errors.push(`${label} 第 ${index + 1} 项 ID 非法`)
       if (toNumber(quantity) <= 0) errors.push(`${label} 第 ${index + 1} 项数量必须大于 0`)
       if (toNumber(weight) <= 0) errors.push(`${label} 第 ${index + 1} 项权重必须大于 0`)
-      if (ids.has(Number(id))) errors.push(`${label} 存在重复 ID ${id}`)
-      ids.add(Number(id))
+      const rewardKey = `${Number(id)}:${Number(quantity)}`
+      if (rewardKeys.has(rewardKey)) errors.push(`${label} 存在重复奖项 ID ${id}、数量 ${quantity}`)
+      rewardKeys.add(rewardKey)
     })
     const total = rewards.reduce((sum, entry) => sum + toNumber(entry[2]), 0)
     if (rewards.length && total !== 10000) warnings.push(`${label} 权重合计为 ${total}，不是约定值 10000`)
@@ -258,6 +315,8 @@ export const validateDraw = draw => {
   inspectPool('普通奖池', draw.normalRewards)
   draw.fixedPools.forEach(pool => inspectPool(`固定第 ${pool.time} 抽`, pool.rewards))
   draw.specialPools.forEach(pool => inspectPool(`特殊周期 ${pool.time}`, pool.rewards))
+  if (draw.fixedPools.some(pool => !Number.isInteger(Number(pool.time)) || Number(pool.time) <= 0)) errors.push('固定奖励次数必须是大于 0 的整数')
+  if (draw.specialPools.some(pool => !Number.isInteger(Number(pool.time)) || Number(pool.time) <= 0)) errors.push('特殊奖励次数必须是大于 0 的整数')
   if (new Set(draw.fixedPools.map(pool => pool.time)).size !== draw.fixedPools.length) errors.push('固定次数存在重复值')
   if (new Set(draw.specialPools.map(pool => pool.time)).size !== draw.specialPools.length) errors.push('特殊周期存在重复值')
   if (draw.totalRewards.length) warnings.push('累计奖励已配置，但当前服务端通用抽奖逻辑未消费该字段')

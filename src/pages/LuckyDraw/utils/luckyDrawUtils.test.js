@@ -4,9 +4,12 @@ import assert from 'node:assert/strict'
 import {
   allocateIntegerWeights,
   applyRewardsToTargets,
+  buildInitialWeightConfig,
   buildPoolRewards,
   filterItems,
-  parseRangeText
+  parseArmyTable,
+  parseRangeText,
+  validateDraw
 } from './luckyDrawUtils.js'
 
 const items = [
@@ -16,6 +19,23 @@ const items = [
   { id: 20501, note: 'D', type: 1, subType: 8, quality: 5 },
   { id: 21301, note: '碎片', type: 1, subType: 9, quality: 3 }
 ]
+
+test('兵种候选数据从 ArmyTable 字段读取', () => {
+  const headers = ['#', 'Id', 'Note', 'Roles', 'ArmyTag', 'Qua', 'Icon', 'Name']
+  const fullData = [
+    ['#', '兵种表'],
+    headers,
+    ['#', 'int', 'string', 'int', 'int', 'int', 'string', 'string'],
+    ['#', 'Id【KEY】', '注释', '职能', '分类', '品质', '图标', '名称'],
+    [null, '10002', '祖茂-步兵 T1', 0, 1, 2, 'm10002', 'armyName.10002'],
+    [null, '10001', '刘备-步兵 T1', 0, 1, 6, 'm10001', 'armyName.10001']
+  ]
+
+  assert.deepEqual(parseArmyTable(fullData, headers), [
+    { id: 10001, note: '刘备-步兵 T1', name: 'armyName.10001', icon: 'm10001', type: 0, subType: 1, quality: 6 },
+    { id: 10002, note: '祖茂-步兵 T1', name: 'armyName.10002', icon: 'm10002', type: 0, subType: 1, quality: 2 }
+  ])
+})
 
 test('组合筛选支持 SubType、品质、ID 范围和排除范围', () => {
   const result = filterItems(items, {
@@ -52,6 +72,17 @@ test('按品质分配组权重并在组内均分', () => {
   ])
 })
 
+test('根据已选项按低品质优先曲线初始化权重和连续 ID 段', () => {
+  const initial = buildInitialWeightConfig(items, new Set([20301, 20302, 20401, 21301]), 10000)
+
+  assert.deepEqual(initial.qualityWeights, { 3: 7143, 4: 2857 })
+  assert.deepEqual(initial.rangeRules, [
+    { min: 20301, max: 20302, mode: 'group', weight: 3334 },
+    { min: 20401, max: 20401, mode: 'group', weight: 3333 },
+    { min: 21301, max: 21301, mode: 'group', weight: 3333 }
+  ])
+})
+
 test('ID 范围规则采用靠后的规则覆盖，并归一化到总权重', () => {
   const rewards = buildPoolRewards({
     items,
@@ -78,4 +109,37 @@ test('可以将生成结果批量覆盖多个目标奖池', () => {
   assert.deepEqual(next.normalRewards, [[20301, 1, 10000]])
   assert.deepEqual(next.fixedPools[0].rewards, [[20301, 1, 10000]])
   assert.deepEqual(next.specialPools[0].rewards, [[20301, 1, 10000]])
+})
+
+test('固定奖励和特殊奖励次数必须为正整数且不能重复', () => {
+  const result = validateDraw({
+    id: 1,
+    normalRewards: [[1, 1, 10000]],
+    fixedPools: [{ time: 0, rewards: [] }, { time: 2.5, rewards: [] }],
+    specialPools: [{ time: 10, rewards: [] }, { time: 10, rewards: [] }],
+    totalRewards: []
+  })
+
+  assert.ok(result.errors.includes('固定奖励次数必须是大于 0 的整数'))
+  assert.ok(result.errors.includes('特殊周期存在重复值'))
+})
+
+test('同一 ID 的不同数量档位合法，仅拦截 ID 和数量都相同的重复奖项', () => {
+  const valid = validateDraw({
+    id: 1,
+    normalRewards: [[16, 2000, 151], [16, 3000, 300], [16, 5000, 850]],
+    fixedPools: [],
+    specialPools: [],
+    totalRewards: []
+  })
+  assert.deepEqual(valid.errors, [])
+
+  const duplicate = validateDraw({
+    id: 1,
+    normalRewards: [[16, 2000, 151], [16, 2000, 300]],
+    fixedPools: [],
+    specialPools: [],
+    totalRewards: []
+  })
+  assert.ok(duplicate.errors.includes('普通奖池 存在重复奖项 ID 16、数量 2000'))
 })

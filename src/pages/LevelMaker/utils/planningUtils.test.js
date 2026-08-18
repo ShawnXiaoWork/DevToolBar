@@ -241,6 +241,10 @@ test('generateMatrixUnits borrows names from the same style before suffixing exh
     assert.equal(names.length, 12);
     assert.equal(new Set(names).size, 12);
     assert.ok(names.every(name => !/-\d+-弓箭手 T\d$/.test(name)));
+
+    const reserveUnit = units.find(unit => unit.name.startsWith('Reserve'));
+    assert.ok(reserveUnit);
+    assert.ok([1, 2].includes(reserveUnit.qua), '跨品质借名后应保留名称库中的来源品质');
   } finally {
     Math.random = originalRandom;
   }

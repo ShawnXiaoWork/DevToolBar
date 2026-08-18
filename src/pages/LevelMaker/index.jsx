@@ -91,7 +91,7 @@ const fetchAndParseNamesPool = async () => {
     const name = row[nameIdx];
     const qua = Number(row[quaIdx]);
 
-    if (styleStr && name && !isNaN(qua)) {
+    if (styleStr && name && Number.isInteger(qua) && qua >= 1 && qua <= 6) {
       const style = STYLE_MAP[styleStr];
       if (style !== undefined) {
         if (!pool[style][qua]) {

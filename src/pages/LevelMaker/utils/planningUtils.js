@@ -345,31 +345,36 @@ export const generateMatrixUnits = (config, roleWeights, derivationParams, exist
 
   const uniqueNames = (names) => [...new Set((names || []).filter(Boolean))];
 
-  const getNamesByPreference = (preferredPool, fallbackPools = []) => {
-    const preferredNames = uniqueNames(preferredPool);
-    const fallbackNames = uniqueNames(fallbackPools.flat()).filter(name => !preferredNames.includes(name));
-    const names = [...preferredNames, ...fallbackNames];
-    return names.length > 0 ? names : ['未知单位'];
+  const getNamesByPreference = (preferredPool, preferredQua, fallbackPools = []) => {
+    const preferredCandidates = uniqueNames(preferredPool).map(name => ({ name, qua: preferredQua }));
+    const preferredNames = new Set(preferredCandidates.map(candidate => candidate.name));
+    const fallbackCandidates = fallbackPools.flatMap(({ qua, names }) => (
+      uniqueNames(names)
+        .filter(name => !preferredNames.has(name))
+        .map(name => ({ name, qua }))
+    ));
+    const candidates = [...preferredCandidates, ...fallbackCandidates];
+    return candidates.length > 0 ? candidates : [{ name: '未知单位', qua: preferredQua }];
   };
 
-  const pickName = (preferredPool, fallbackPools, buildDisplayName) => {
-    const names = getNamesByPreference(preferredPool, fallbackPools);
-    const startIdx = Math.floor(Math.random() * names.length);
+  const pickName = (preferredPool, preferredQua, fallbackPools, buildDisplayName) => {
+    const candidates = getNamesByPreference(preferredPool, preferredQua, fallbackPools);
+    const startIdx = Math.floor(Math.random() * candidates.length);
 
-    for (let offset = 0; offset < names.length; offset++) {
-      const candidate = names[(startIdx + offset) % names.length];
-      const displayName = buildDisplayName(candidate);
-      if (!usedBaseNames.has(candidate) && !usedNames.has(displayName)) {
+    for (let offset = 0; offset < candidates.length; offset++) {
+      const candidate = candidates[(startIdx + offset) % candidates.length];
+      const displayName = buildDisplayName(candidate.name);
+      if (!usedBaseNames.has(candidate.name) && !usedNames.has(displayName)) {
         return candidate;
       }
     }
 
-    const baseName = names[startIdx];
+    const baseCandidate = candidates[startIdx];
     let suffix = 2;
-    while (usedNames.has(buildDisplayName(`${baseName}-${suffix}`))) {
+    while (usedNames.has(buildDisplayName(`${baseCandidate.name}-${suffix}`))) {
       suffix++;
     }
-    return `${baseName}-${suffix}`;
+    return { ...baseCandidate, name: `${baseCandidate.name}-${suffix}` };
   };
 
   Object.keys(roleDistribution).forEach(roleId => {
@@ -397,15 +402,17 @@ export const generateMatrixUnits = (config, roleWeights, derivationParams, exist
         ? Object.keys(namesPool[style])
           .filter(candidateQua => Number(candidateQua) !== qua)
           .sort((a, b) => Math.abs(Number(a) - qua) - Math.abs(Number(b) - qua))
-          .map(candidateQua => namesPool[style][candidateQua])
+          .map(candidateQua => ({ qua: Number(candidateQua), names: namesPool[style][candidateQua] }))
         : [];
       const bossPrefix = isBoss ? BOSS_PREFIXES[Math.floor(Math.random() * BOSS_PREFIXES.length)] : '';
       const buildDisplayName = (candidateName) => `${bossPrefix}${candidateName}-${ROLE_LABELS[role]} T${tier}`;
-      const baseName = pickName(
+      const pickedName = pickName(
         excelNames && excelNames.length > 0 ? excelNames : (ROLE_NAME_POOLS[role] || ['未知单位']),
+        qua,
         excelNames && excelNames.length > 0 ? sameStyleFallbackPools : [],
         buildDisplayName
       );
+      const baseName = pickedName.name;
       const displayName = buildDisplayName(baseName);
 
       const finalId = getNextIdForRole(isBoss ? 'Boss' : role, existingUnits, newUnits);
@@ -414,7 +421,8 @@ export const generateMatrixUnits = (config, roleWeights, derivationParams, exist
         id: finalId,
         name: displayName,
         style: style,
-        qua: qua,
+        // 品质跟随名称库中的来源等级；跨品质借名时不能继续沿用目标 Tier 品质。
+        qua: pickedName.qua,
         hp: Math.round(derivationParams.baseHp * weights.hp * tierMultiplier * hpMut * bossMultiplier),
         atk: Math.round(derivationParams.baseAtk * weights.atk * tierMultiplier * atkMut * bossAtkMultiplier),
         atkSpeed: Number((weights.atkSpeed * (0.9 + Math.random() * 0.2)).toFixed(2)),
