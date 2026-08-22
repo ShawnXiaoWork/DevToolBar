@@ -1,0 +1,6 @@
+@media (min-width: 801px) {
+  .batch-controls {
+    grid-template-columns: 1fr 1fr 1fr 150px;
+    gap: 22px;
+  }
+}
