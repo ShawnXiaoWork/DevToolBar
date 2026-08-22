@@ -6,7 +6,7 @@ import UnitFilters from './UnitFilters';
 import UnitTable from './UnitTable';
 import UnitEditor from './UnitEditor';
 import { calculatePowerScore } from '../../utils/planningUtils';
-import { buildArmyTemplateDefaults, syncArmyTable } from '../../utils/armySyncUtils';
+import { buildArmyTemplateDefaults, normalizeArmyQuality, syncArmyTable } from '../../utils/armySyncUtils';
 
 const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
   const [editingUnit, setEditingUnit] = useState(null);
@@ -270,6 +270,9 @@ const UnitLibrary = ({ state, dispatch, roleWeights, derivationParams }) => {
         'Speed': u.spd || 75,
         'AttackRange': u.atkRange || 100,
         'Race': Array.isArray(u.roles) ? u.roles.join('|') : u.roles,
+        'Roles': (u.roles && u.roles.length > 0) ? Number(u.roles[0]) : 0,
+        'Style': u.style !== undefined ? Number(u.style) : 0,
+        'Qua': normalizeArmyQuality(u.qua),
         'Icon': `m${u.id}`,
         'Prefab': u.prefab || 10001,
         'Cost': score

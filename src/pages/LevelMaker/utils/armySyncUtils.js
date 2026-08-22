@@ -4,6 +4,11 @@ import { calculatePowerScore } from './planningUtils.js';
 
 const hasArmyTableValue = (value) => value !== undefined && value !== null && value !== '';
 
+export const normalizeArmyQuality = (value) => {
+  const quality = Math.round(Number(value));
+  return Number.isFinite(quality) ? Math.max(1, Math.min(6, quality)) : 1;
+};
+
 const getUnitPrimaryRole = (unit) => {
   const role = Array.isArray(unit?.roles) ? Number(unit.roles[0]) : Number(unit?.roles);
   return Number.isFinite(role) ? role : undefined;
@@ -313,7 +318,7 @@ export const syncArmyTable = async ({
     'Race': (unit) => Array.isArray(unit.roles) ? unit.roles.join('|') : unit.roles,
     'Roles': (unit) => (unit.roles && unit.roles.length > 0) ? Number(unit.roles[0]) : 0,
     'Style': (unit) => unit.style !== undefined ? Number(unit.style) : 0,
-    'Qua': (unit) => unit.qua !== undefined ? Number(unit.qua) : 1,
+    'Qua': (unit) => normalizeArmyQuality(unit.qua),
     'Icon': (unit) => `m${unit.id}`,
     'Prefab': (unit) => unit.prefab || 10001,
     'Cost': (unit) => calculatePowerScore(unit)
