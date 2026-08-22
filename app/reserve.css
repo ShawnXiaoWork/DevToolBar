@@ -1,16 +1,10 @@
 @media (min-width: 801px) {
-  .mode-options {
-    grid-template-columns: repeat(4, 1fr);
-  }
+  .mode-options { grid-template-columns: repeat(3, 1fr); }
   .batch-controls {
     grid-template-columns: 1fr 1fr 1fr 150px;
     gap: 22px;
   }
 }
 
-.mode-options .alignment.active {
-  color: var(--ink);
-  background: var(--acid);
-  border-color: var(--ink);
-  box-shadow: inset 0 -3px var(--ink);
-}
+.mirror-bar{display:grid;grid-template-columns:1fr 1fr;gap:28px;padding:18px 28px;border-bottom:1px solid var(--line);background:#fafaf5}.mirror-bar>div{display:grid;grid-template-columns:90px 1fr;align-items:center;gap:12px}.mirror-options{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.mirror-options button{border:1px solid var(--line);background:white;border-radius:8px;padding:9px 8px;font-size:11px;cursor:pointer}.mirror-options button.active{background:var(--acid);border-color:var(--ink);font-weight:700}
+@media(max-width:800px){.mirror-bar{grid-template-columns:1fr;padding:16px 18px}.mirror-bar>div{grid-template-columns:75px 1fr}}

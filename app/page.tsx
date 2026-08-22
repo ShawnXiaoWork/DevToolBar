@@ -3,6 +3,8 @@
 import { ChangeEvent, DragEvent, useCallback, useRef, useState } from "react";
 
 type Mode = "auto" | "fixed-width" | "fixed-height";
+type MirrorX = "none" | "left" | "right";
+type MirrorY = "none" | "top" | "bottom";
 type Bounds = { x1: number; x2: number; y1: number; y2: number };
 type Item = {
   id: string;
@@ -49,44 +51,32 @@ function findBounds(image: ImageBitmap, tolerance: number, purity: number): Boun
   return { x1, x2, y1, y2 };
 }
 
-function findAlignedStart(image: ImageBitmap, bounds: Bounds, axis: "x" | "y", keep: number) {
-  const canvas = document.createElement("canvas"); canvas.width = image.width; canvas.height = image.height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true })!; ctx.drawImage(image, 0, 0);
-  const data = ctx.getImageData(0, 0, image.width, image.height).data, w = image.width, h = image.height;
-  const diff = (a: number, b: number) => Math.abs(data[a] - data[b]) + Math.abs(data[a + 1] - data[b + 1]) + Math.abs(data[a + 2] - data[b + 2]) + Math.abs(data[a + 3] - data[b + 3]);
-  const from = axis === "x" ? bounds.x1 : bounds.y1, to = (axis === "x" ? bounds.x2 : bounds.y2) - keep;
-  if (to <= from) return from;
-  const sampleLength = axis === "x" ? h : w, step = Math.max(1, Math.floor(sampleLength / 256));
-  let best = from, bestScore = Number.POSITIVE_INFINITY;
-  for (let candidate = from; candidate <= to; candidate++) {
-    let score = 0;
-    for (let p = 0; p < sampleLength; p += step) {
-      if (axis === "x") {
-        if (bounds.x1 > 0) score += diff((p * w + bounds.x1 - 1) * 4, (p * w + candidate) * 4);
-        if (bounds.x2 < w) score += diff((p * w + bounds.x2) * 4, (p * w + candidate + keep - 1) * 4);
-      } else {
-        if (bounds.y1 > 0) score += diff(((bounds.y1 - 1) * w + p) * 4, (candidate * w + p) * 4);
-        if (bounds.y2 < h) score += diff((bounds.y2 * w + p) * 4, ((candidate + keep - 1) * w + p) * 4);
-      }
-    }
-    if (score < bestScore) { bestScore = score; best = candidate; }
-  }
-  return best;
-}
-
-async function trim(file: File, mode: Mode, tolerance: number, purity: number, reserve: number, alignPixels: boolean) {
+async function trim(file: File, mode: Mode, tolerance: number, purity: number, reserve: number, mirrorX: MirrorX, mirrorY: MirrorY) {
   const image = await createImageBitmap(file), bounds = findBounds(image, tolerance, purity / 100);
   const originalWidth = image.width, originalHeight = image.height;
   const fullX = mode === "fixed-width", fullY = mode === "fixed-height";
   const keepX = Math.max(1, Math.min(reserve, bounds.x2 - bounds.x1)), keepY = Math.max(1, Math.min(reserve, bounds.y2 - bounds.y1));
-  const centerX = alignPixels ? findAlignedStart(image, bounds, "x", keepX) : Math.floor((bounds.x1 + bounds.x2 - keepX) / 2);
-  const centerY = alignPixels ? findAlignedStart(image, bounds, "y", keepY) : Math.floor((bounds.y1 + bounds.y2 - keepY) / 2);
+  const centerX = Math.floor((bounds.x1 + bounds.x2 - keepX) / 2), centerY = Math.floor((bounds.y1 + bounds.y2 - keepY) / 2);
   const xs = fullX ? [[0, image.width]] : [[0, bounds.x1], [centerX, keepX], [bounds.x2, image.width - bounds.x2]];
   const ys = fullY ? [[0, image.height]] : [[0, bounds.y1], [centerY, keepY], [bounds.y2, image.height - bounds.y2]];
   const canvas = document.createElement("canvas");
   canvas.width = xs.reduce((sum, x) => sum + x[1], 0); canvas.height = ys.reduce((sum, y) => sum + y[1], 0);
   const ctx = canvas.getContext("2d")!; let dy = 0;
   for (const [sy, sh] of ys) { let dx = 0; for (const [sx, sw] of xs) { if (sw > 0 && sh > 0) ctx.drawImage(image, sx, sy, sw, sh, dx, dy, sw, sh); dx += sw; } dy += sh; }
+  if (mirrorX !== "none") {
+    const copy = document.createElement("canvas"); copy.width = canvas.width; copy.height = canvas.height; copy.getContext("2d")!.drawImage(canvas, 0, 0);
+    const half = Math.floor(canvas.width / 2); ctx.save(); ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
+    if (mirrorX === "left") ctx.drawImage(copy, 0, 0, half, canvas.height, 0, 0, half, canvas.height);
+    else ctx.drawImage(copy, canvas.width - half, 0, half, canvas.height, canvas.width - half, 0, half, canvas.height);
+    ctx.restore();
+  }
+  if (mirrorY !== "none") {
+    const copy = document.createElement("canvas"); copy.width = canvas.width; copy.height = canvas.height; copy.getContext("2d")!.drawImage(canvas, 0, 0);
+    const half = Math.floor(canvas.height / 2); ctx.save(); ctx.translate(0, canvas.height); ctx.scale(1, -1);
+    if (mirrorY === "top") ctx.drawImage(copy, 0, 0, canvas.width, half, 0, 0, canvas.width, half);
+    else ctx.drawImage(copy, 0, canvas.height - half, canvas.width, half, 0, canvas.height - half, canvas.width, half);
+    ctx.restore();
+  }
   image.close();
   const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("导出失败")), "image/png"));
   return { outputUrl: URL.createObjectURL(blob), original: `${originalWidth} × ${originalHeight}`, output: `${canvas.width} × ${canvas.height}` };
@@ -99,21 +89,21 @@ const modeCopy: Record<Mode, { title: string; note: string }> = {
 };
 
 export default function Home() {
-  const [items, setItems] = useState<Item[]>([]), [mode, setMode] = useState<Mode>("auto"), [tolerance, setTolerance] = useState(10), [purity, setPurity] = useState(98), [reserve, setReserve] = useState(10), [alignPixels, setAlignPixels] = useState(true), [dragging, setDragging] = useState(false), [running, setRunning] = useState(false);
+  const [items, setItems] = useState<Item[]>([]), [mode, setMode] = useState<Mode>("auto"), [tolerance, setTolerance] = useState(10), [purity, setPurity] = useState(98), [reserve, setReserve] = useState(10), [mirrorX, setMirrorX] = useState<MirrorX>("none"), [mirrorY, setMirrorY] = useState<MirrorY>("none"), [dragging, setDragging] = useState(false), [running, setRunning] = useState(false);
   const itemsRef = useRef<Item[]>([]); itemsRef.current = items;
   const reprocessTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const processItems = useCallback(async (targets: Item[], nextMode = mode, nextTolerance = tolerance, nextPurity = purity, nextReserve = reserve, nextAlign = alignPixels) => {
+  const processItems = useCallback(async (targets: Item[], nextMode = mode, nextTolerance = tolerance, nextPurity = purity, nextReserve = reserve, nextMirrorX = mirrorX, nextMirrorY = mirrorY) => {
     if (!targets.length) return; setRunning(true);
     for (const target of targets) {
       setItems(current => current.map(x => x.id === target.id ? { ...x, status: "processing" } : x));
       try {
-        const result = await trim(target.file, nextMode, nextTolerance, nextPurity, nextReserve, nextAlign);
+        const result = await trim(target.file, nextMode, nextTolerance, nextPurity, nextReserve, nextMirrorX, nextMirrorY);
         setItems(current => current.map(x => { if (x.id !== target.id) return x; if (x.outputUrl) URL.revokeObjectURL(x.outputUrl); return { ...x, ...result, status: "done" }; }));
       } catch { setItems(current => current.map(x => x.id === target.id ? { ...x, status: "error" } : x)); }
     }
     setRunning(false);
-  }, [mode, tolerance, purity, reserve, alignPixels]);
+  }, [mode, tolerance, purity, reserve, mirrorX, mirrorY]);
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const added = Array.from(files).filter(file => file.type.startsWith("image/")).map(file => ({ id: crypto.randomUUID(), file, sourceUrl: URL.createObjectURL(file), status: "waiting" as const }));
@@ -121,11 +111,12 @@ export default function Home() {
   }, [processItems]);
   const remove = (id: string) => setItems(current => { const target = current.find(x => x.id === id); if (target) { URL.revokeObjectURL(target.sourceUrl); if (target.outputUrl) URL.revokeObjectURL(target.outputUrl); } return current.filter(x => x.id !== id); });
   const clear = () => { items.forEach(x => { URL.revokeObjectURL(x.sourceUrl); if (x.outputUrl) URL.revokeObjectURL(x.outputUrl); }); setItems([]); };
-  const changeMode = (next: Mode) => { setMode(next); void processItems(itemsRef.current, next, tolerance, purity, reserve, alignPixels); };
-  const changeAlignment = () => { const next = !alignPixels; setAlignPixels(next); void processItems(itemsRef.current, mode, tolerance, purity, reserve, next); };
+  const changeMode = (next: Mode) => { setMode(next); void processItems(itemsRef.current, next, tolerance, purity, reserve, mirrorX, mirrorY); };
+  const changeMirrorX = (next: MirrorX) => { setMirrorX(next); void processItems(itemsRef.current, mode, tolerance, purity, reserve, next, mirrorY); };
+  const changeMirrorY = (next: MirrorY) => { setMirrorY(next); void processItems(itemsRef.current, mode, tolerance, purity, reserve, mirrorX, next); };
   const scheduleReprocess = (nextTolerance: number, nextPurity: number, nextReserve: number) => {
     if (reprocessTimer.current) clearTimeout(reprocessTimer.current);
-    reprocessTimer.current = setTimeout(() => void processItems(itemsRef.current, mode, nextTolerance, nextPurity, nextReserve, alignPixels), 250);
+    reprocessTimer.current = setTimeout(() => void processItems(itemsRef.current, mode, nextTolerance, nextPurity, nextReserve, mirrorX, mirrorY), 250);
   };
   const changeTolerance = (next: number) => { setTolerance(next); scheduleReprocess(next, purity, reserve); };
   const changePurity = (next: number) => { setPurity(next); scheduleReprocess(tolerance, next, reserve); };
@@ -140,12 +131,13 @@ export default function Home() {
     <nav><a className="brand" href="#"><span><Icon name="grid"/></span>角纹</a><div className="nav-note">本地处理 · 支持批量</div></nav>
     <section className="hero compact"><div className="eyebrow"><Icon name="spark"/> 九宫纹理批量提取</div><h1>留下四角，<br/><em>减掉多余。</em></h1><p>固定宽、固定高或自动压缩。一次拖入多张图片，统一参数，批量得到最小九宫纹理。</p></section>
     <section className="batch-shell">
-      <div className="mode-bar"><div><span className="step">处理方式</span><strong>选择尺寸约束与接缝优化</strong></div><div className="mode-options">{(Object.keys(modeCopy) as Mode[]).map(value => <button key={value} className={mode === value ? "active" : ""} onClick={() => changeMode(value)}><b>{modeCopy[value].title}</b><small>{modeCopy[value].note}</small></button>)}<button className={alignPixels ? "active alignment" : "alignment"} onClick={changeAlignment}><b>像素对齐 {alignPixels ? "开" : "关"}</b><small>搜索最低接缝误差</small></button></div></div>
+      <div className="mode-bar"><div><span className="step">处理方式</span><strong>选择需要保持不变的尺寸</strong></div><div className="mode-options">{(Object.keys(modeCopy) as Mode[]).map(value => <button key={value} className={mode === value ? "active" : ""} onClick={() => changeMode(value)}><b>{modeCopy[value].title}</b><small>{modeCopy[value].note}</small></button>)}</div></div>
+      <div className="mirror-bar"><div><span className="step">左右镜像</span><div className="mirror-options">{([['none','关闭'],['left','使用左侧'],['right','使用右侧']] as [MirrorX,string][]).map(([value,label]) => <button key={value} className={mirrorX === value ? "active" : ""} onClick={() => changeMirrorX(value)}>{label}</button>)}</div></div><div><span className="step">上下镜像</span><div className="mirror-options">{([['none','关闭'],['top','使用上侧'],['bottom','使用下侧']] as [MirrorY,string][]).map(([value,label]) => <button key={value} className={mirrorY === value ? "active" : ""} onClick={() => changeMirrorY(value)}>{label}</button>)}</div></div></div>
       <div className="batch-controls"><label className="control"><span>颜色容差 <output>{tolerance}</output></span><input type="range" min="0" max="40" value={tolerance} onChange={e => changeTolerance(+e.target.value)}/></label><label className="control"><span>纯色比例 <output>{purity}%</output></span><input type="range" min="80" max="100" value={purity} onChange={e => changePurity(+e.target.value)}/></label><label className="control"><span>九宫预留 <output>{reserve}px</output></span><input type="range" min="1" max="30" value={reserve} onChange={e => changeReserve(+e.target.value)}/></label><button className="secondary" disabled={!items.length || running} onClick={reprocess}><Icon name="spark"/>重新处理全部</button></div>
       <label className={`batch-drop ${dragging ? "dragging" : ""}`} onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={drop}><span className="upload-icon"><Icon name="upload"/></span><span><strong>拖入多张图片</strong><small>或点击批量选择 · PNG / JPG / WEBP</small></span><input type="file" multiple accept="image/png,image/jpeg,image/webp" onChange={pick}/></label>
     </section>
     {items.length > 0 && <section className="queue"><header><div><span className="step">处理队列</span><h2>{items.length} 张图片</h2></div><div className="queue-actions"><button onClick={clear}>清空</button><button className="download-all" disabled={running || !items.some(x => x.status === "done")} onClick={downloadAll}><Icon name="download"/>批量导出</button></div></header><div className="result-grid">{items.map(item => <article className="result-card" key={item.id}><button className="remove" aria-label={`移除 ${item.file.name}`} onClick={() => remove(item.id)}><Icon name="trash"/></button><div className="compare"><figure><img src={item.sourceUrl} alt="原图"/><figcaption>原图</figcaption></figure><span>→</span><figure className="checker">{item.outputUrl ? <img src={item.outputUrl} alt="处理结果"/> : <i>{item.status === "error" ? "处理失败" : "分析中…"}</i>}<figcaption>九宫纹理</figcaption></figure></div><div className="card-meta"><div><strong title={item.file.name}>{item.file.name}</strong><small>{item.original && item.output ? `${item.original} → ${item.output}` : "正在读取像素"}</small></div><button disabled={!item.outputUrl} onClick={() => downloadOne(item)}><Icon name="download"/></button></div></article>)}</div></section>}
-    <section className="how"><div><span className="step">模式说明</span><h2>尺寸约束，加上像素级对齐</h2></div><ol><li><b>01</b><span><strong>固定宽度</strong>完整保留每一列，只裁掉纵向纯色带。</span></li><li><b>02</b><span><strong>固定高度</strong>完整保留每一行，只裁掉横向纯色带。</span></li><li><b>03</b><span><strong>像素对齐</strong>比较 RGBA 接缝误差，选择与四边最吻合的预留切片。</span></li></ol></section>
+    <section className="how"><div><span className="step">镜像说明</span><h2>用完整的一侧，重建另一侧</h2></div><ol><li><b>01</b><span><strong>左右镜像</strong>选择左侧或右侧作为来源，水平翻转到另一边。</span></li><li><b>02</b><span><strong>上下镜像</strong>选择上侧或下侧作为来源，垂直翻转到另一边。</span></li><li><b>03</b><span><strong>四向对称</strong>同时开启两种镜像，可统一四个角与边缘纹理。</span></li></ol></section>
     <footer><span>角纹 · Nine-slice Trimmer</span><span>无需上传 · 无损 PNG · 批量处理</span></footer>
   </main>;
 }
