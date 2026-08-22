@@ -78,7 +78,8 @@ async function trim(file: File, mode: Mode, tolerance: number, purity: number, r
     ctx.restore();
   }
   image.close();
-  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("导出失败")), "image/png"));
+  const outputType = file.type === "image/jpeg" || file.type === "image/webp" ? file.type : "image/png";
+  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("导出失败")), outputType, .96));
   return { outputUrl: URL.createObjectURL(blob), original: `${originalWidth} × ${originalHeight}`, output: `${canvas.width} × ${canvas.height}` };
 }
 
@@ -122,7 +123,7 @@ export default function Home() {
   const changePurity = (next: number) => { setPurity(next); scheduleReprocess(tolerance, next, reserve); };
   const changeReserve = (next: number) => { setReserve(next); scheduleReprocess(tolerance, purity, next); };
   const reprocess = () => void processItems(itemsRef.current);
-  const downloadOne = (item: Item) => { if (!item.outputUrl) return; const a = document.createElement("a"); a.href = item.outputUrl; a.download = `${item.file.name.replace(/\.[^.]+$/, "")}-9slice.png`; a.click(); };
+  const downloadOne = (item: Item) => { if (!item.outputUrl) return; const a = document.createElement("a"); a.href = item.outputUrl; a.download = item.file.name; a.click(); };
   const downloadAll = async () => { for (const item of items.filter(x => x.status === "done")) { downloadOne(item); await new Promise(resolve => setTimeout(resolve, 180)); } };
   const drop = (e: DragEvent) => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); };
   const pick = (e: ChangeEvent<HTMLInputElement>) => { addFiles(e.target.files ?? []); e.target.value = ""; };
@@ -138,6 +139,6 @@ export default function Home() {
     </section>
     {items.length > 0 && <section className="queue"><header><div><span className="step">处理队列</span><h2>{items.length} 张图片</h2></div><div className="queue-actions"><button onClick={clear}>清空</button><button className="download-all" disabled={running || !items.some(x => x.status === "done")} onClick={downloadAll}><Icon name="download"/>批量导出</button></div></header><div className="result-grid">{items.map(item => <article className="result-card" key={item.id}><button className="remove" aria-label={`移除 ${item.file.name}`} onClick={() => remove(item.id)}><Icon name="trash"/></button><div className="compare"><figure><img src={item.sourceUrl} alt="原图"/><figcaption>原图</figcaption></figure><span>→</span><figure className="checker">{item.outputUrl ? <img src={item.outputUrl} alt="处理结果"/> : <i>{item.status === "error" ? "处理失败" : "分析中…"}</i>}<figcaption>九宫纹理</figcaption></figure></div><div className="card-meta"><div><strong title={item.file.name}>{item.file.name}</strong><small>{item.original && item.output ? `${item.original} → ${item.output}` : "正在读取像素"}</small></div><button disabled={!item.outputUrl} onClick={() => downloadOne(item)}><Icon name="download"/></button></div></article>)}</div></section>}
     <section className="how"><div><span className="step">镜像说明</span><h2>用完整的一侧，重建另一侧</h2></div><ol><li><b>01</b><span><strong>左右镜像</strong>选择左侧或右侧作为来源，水平翻转到另一边。</span></li><li><b>02</b><span><strong>上下镜像</strong>选择上侧或下侧作为来源，垂直翻转到另一边。</span></li><li><b>03</b><span><strong>四向对称</strong>同时开启两种镜像，可统一四个角与边缘纹理。</span></li></ol></section>
-    <footer><span>角纹 · Nine-slice Trimmer</span><span>无需上传 · 无损 PNG · 批量处理</span></footer>
+    <footer><span>角纹 · Nine-slice Trimmer</span><span>无需上传 · 保持原格式与文件名 · 批量处理</span></footer>
   </main>;
 }
