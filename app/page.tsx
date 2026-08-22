@@ -51,14 +51,16 @@ function findBounds(image: ImageBitmap, tolerance: number, purity: number): Boun
   return { x1, x2, y1, y2 };
 }
 
-async function trim(file: File, mode: Mode, tolerance: number, purity: number, reserve: number, mirrorX: MirrorX, mirrorY: MirrorY) {
+async function trim(file: File, mode: Mode, tolerance: number, purity: number, reserve: number, cornerGuard: number, mirrorX: MirrorX, mirrorY: MirrorY) {
   const image = await createImageBitmap(file), bounds = findBounds(image, tolerance, purity / 100);
   const originalWidth = image.width, originalHeight = image.height;
   const fullX = mode === "fixed-width", fullY = mode === "fixed-height";
-  const keepX = Math.max(1, Math.min(reserve, bounds.x2 - bounds.x1)), keepY = Math.max(1, Math.min(reserve, bounds.y2 - bounds.y1));
-  const centerX = Math.floor((bounds.x1 + bounds.x2 - keepX) / 2), centerY = Math.floor((bounds.y1 + bounds.y2 - keepY) / 2);
-  const xs = fullX ? [[0, image.width]] : [[0, bounds.x1], [centerX, keepX], [bounds.x2, image.width - bounds.x2]];
-  const ys = fullY ? [[0, image.height]] : [[0, bounds.y1], [centerY, keepY], [bounds.y2, image.height - bounds.y2]];
+  const guardX = Math.max(0, Math.min(cornerGuard, Math.floor((bounds.x2 - bounds.x1 - 1) / 2))), guardY = Math.max(0, Math.min(cornerGuard, Math.floor((bounds.y2 - bounds.y1 - 1) / 2)));
+  const cutX1 = bounds.x1 + guardX, cutX2 = bounds.x2 - guardX, cutY1 = bounds.y1 + guardY, cutY2 = bounds.y2 - guardY;
+  const keepX = Math.max(1, Math.min(reserve, cutX2 - cutX1)), keepY = Math.max(1, Math.min(reserve, cutY2 - cutY1));
+  const leftKeep = Math.ceil(keepX / 2), rightKeep = Math.floor(keepX / 2), topKeep = Math.ceil(keepY / 2), bottomKeep = Math.floor(keepY / 2);
+  const xs = fullX ? [[0, image.width]] : [[0, cutX1 + leftKeep], [cutX2 - rightKeep, image.width - cutX2 + rightKeep]];
+  const ys = fullY ? [[0, image.height]] : [[0, cutY1 + topKeep], [cutY2 - bottomKeep, image.height - cutY2 + bottomKeep]];
   const canvas = document.createElement("canvas");
   canvas.width = xs.reduce((sum, x) => sum + x[1], 0); canvas.height = ys.reduce((sum, y) => sum + y[1], 0);
   const ctx = canvas.getContext("2d")!; let dy = 0;
@@ -90,21 +92,21 @@ const modeCopy: Record<Mode, { title: string; note: string }> = {
 };
 
 export default function Home() {
-  const [items, setItems] = useState<Item[]>([]), [mode, setMode] = useState<Mode>("auto"), [tolerance, setTolerance] = useState(10), [purity, setPurity] = useState(98), [reserve, setReserve] = useState(10), [mirrorX, setMirrorX] = useState<MirrorX>("none"), [mirrorY, setMirrorY] = useState<MirrorY>("none"), [dragging, setDragging] = useState(false), [running, setRunning] = useState(false);
+  const [items, setItems] = useState<Item[]>([]), [mode, setMode] = useState<Mode>("auto"), [tolerance, setTolerance] = useState(10), [purity, setPurity] = useState(98), [reserve, setReserve] = useState(10), [cornerGuard, setCornerGuard] = useState(10), [mirrorX, setMirrorX] = useState<MirrorX>("none"), [mirrorY, setMirrorY] = useState<MirrorY>("none"), [dragging, setDragging] = useState(false), [running, setRunning] = useState(false);
   const itemsRef = useRef<Item[]>([]); itemsRef.current = items;
   const reprocessTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const processItems = useCallback(async (targets: Item[], nextMode = mode, nextTolerance = tolerance, nextPurity = purity, nextReserve = reserve, nextMirrorX = mirrorX, nextMirrorY = mirrorY) => {
+  const processItems = useCallback(async (targets: Item[], nextMode = mode, nextTolerance = tolerance, nextPurity = purity, nextReserve = reserve, nextGuard = cornerGuard, nextMirrorX = mirrorX, nextMirrorY = mirrorY) => {
     if (!targets.length) return; setRunning(true);
     for (const target of targets) {
       setItems(current => current.map(x => x.id === target.id ? { ...x, status: "processing" } : x));
       try {
-        const result = await trim(target.file, nextMode, nextTolerance, nextPurity, nextReserve, nextMirrorX, nextMirrorY);
+        const result = await trim(target.file, nextMode, nextTolerance, nextPurity, nextReserve, nextGuard, nextMirrorX, nextMirrorY);
         setItems(current => current.map(x => { if (x.id !== target.id) return x; if (x.outputUrl) URL.revokeObjectURL(x.outputUrl); return { ...x, ...result, status: "done" }; }));
       } catch { setItems(current => current.map(x => x.id === target.id ? { ...x, status: "error" } : x)); }
     }
     setRunning(false);
-  }, [mode, tolerance, purity, reserve, mirrorX, mirrorY]);
+  }, [mode, tolerance, purity, reserve, cornerGuard, mirrorX, mirrorY]);
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const added = Array.from(files).filter(file => file.type.startsWith("image/")).map(file => ({ id: crypto.randomUUID(), file, sourceUrl: URL.createObjectURL(file), status: "waiting" as const }));
@@ -112,16 +114,17 @@ export default function Home() {
   }, [processItems]);
   const remove = (id: string) => setItems(current => { const target = current.find(x => x.id === id); if (target) { URL.revokeObjectURL(target.sourceUrl); if (target.outputUrl) URL.revokeObjectURL(target.outputUrl); } return current.filter(x => x.id !== id); });
   const clear = () => { items.forEach(x => { URL.revokeObjectURL(x.sourceUrl); if (x.outputUrl) URL.revokeObjectURL(x.outputUrl); }); setItems([]); };
-  const changeMode = (next: Mode) => { setMode(next); void processItems(itemsRef.current, next, tolerance, purity, reserve, mirrorX, mirrorY); };
-  const changeMirrorX = (next: MirrorX) => { setMirrorX(next); void processItems(itemsRef.current, mode, tolerance, purity, reserve, next, mirrorY); };
-  const changeMirrorY = (next: MirrorY) => { setMirrorY(next); void processItems(itemsRef.current, mode, tolerance, purity, reserve, mirrorX, next); };
-  const scheduleReprocess = (nextTolerance: number, nextPurity: number, nextReserve: number) => {
+  const changeMode = (next: Mode) => { setMode(next); void processItems(itemsRef.current, next, tolerance, purity, reserve, cornerGuard, mirrorX, mirrorY); };
+  const changeMirrorX = (next: MirrorX) => { setMirrorX(next); void processItems(itemsRef.current, mode, tolerance, purity, reserve, cornerGuard, next, mirrorY); };
+  const changeMirrorY = (next: MirrorY) => { setMirrorY(next); void processItems(itemsRef.current, mode, tolerance, purity, reserve, cornerGuard, mirrorX, next); };
+  const scheduleReprocess = (nextTolerance: number, nextPurity: number, nextReserve: number, nextGuard: number) => {
     if (reprocessTimer.current) clearTimeout(reprocessTimer.current);
-    reprocessTimer.current = setTimeout(() => void processItems(itemsRef.current, mode, nextTolerance, nextPurity, nextReserve, mirrorX, mirrorY), 250);
+    reprocessTimer.current = setTimeout(() => void processItems(itemsRef.current, mode, nextTolerance, nextPurity, nextReserve, nextGuard, mirrorX, mirrorY), 250);
   };
-  const changeTolerance = (next: number) => { setTolerance(next); scheduleReprocess(next, purity, reserve); };
-  const changePurity = (next: number) => { setPurity(next); scheduleReprocess(tolerance, next, reserve); };
-  const changeReserve = (next: number) => { setReserve(next); scheduleReprocess(tolerance, purity, next); };
+  const changeTolerance = (next: number) => { setTolerance(next); scheduleReprocess(next, purity, reserve, cornerGuard); };
+  const changePurity = (next: number) => { setPurity(next); scheduleReprocess(tolerance, next, reserve, cornerGuard); };
+  const changeReserve = (next: number) => { setReserve(next); scheduleReprocess(tolerance, purity, next, cornerGuard); };
+  const changeCornerGuard = (next: number) => { setCornerGuard(next); scheduleReprocess(tolerance, purity, reserve, next); };
   const reprocess = () => void processItems(itemsRef.current);
   const downloadOne = (item: Item) => { if (!item.outputUrl) return; const a = document.createElement("a"); a.href = item.outputUrl; a.download = item.file.name; a.click(); };
   const downloadAll = async () => { for (const item of items.filter(x => x.status === "done")) { downloadOne(item); await new Promise(resolve => setTimeout(resolve, 180)); } };
@@ -134,7 +137,7 @@ export default function Home() {
     <section className="batch-shell">
       <div className="mode-bar"><div><span className="step">处理方式</span><strong>选择需要保持不变的尺寸</strong></div><div className="mode-options">{(Object.keys(modeCopy) as Mode[]).map(value => <button key={value} className={mode === value ? "active" : ""} onClick={() => changeMode(value)}><b>{modeCopy[value].title}</b><small>{modeCopy[value].note}</small></button>)}</div></div>
       <div className="mirror-bar"><div><span className="step">左右镜像</span><div className="mirror-options">{([['none','关闭'],['left','使用左侧'],['right','使用右侧']] as [MirrorX,string][]).map(([value,label]) => <button key={value} className={mirrorX === value ? "active" : ""} onClick={() => changeMirrorX(value)}>{label}</button>)}</div></div><div><span className="step">上下镜像</span><div className="mirror-options">{([['none','关闭'],['top','使用上侧'],['bottom','使用下侧']] as [MirrorY,string][]).map(([value,label]) => <button key={value} className={mirrorY === value ? "active" : ""} onClick={() => changeMirrorY(value)}>{label}</button>)}</div></div></div>
-      <div className="batch-controls"><label className="control"><span>颜色容差 <output>{tolerance}</output></span><input type="range" min="0" max="40" value={tolerance} onChange={e => changeTolerance(+e.target.value)}/></label><label className="control"><span>纯色比例 <output>{purity}%</output></span><input type="range" min="80" max="100" value={purity} onChange={e => changePurity(+e.target.value)}/></label><label className="control"><span>九宫预留 <output>{reserve}px</output></span><input type="range" min="1" max="30" value={reserve} onChange={e => changeReserve(+e.target.value)}/></label><button className="secondary" disabled={!items.length || running} onClick={reprocess}><Icon name="spark"/>重新处理全部</button></div>
+      <div className="batch-controls"><label className="control"><span>颜色容差 <output>{tolerance}</output></span><input type="range" min="0" max="40" value={tolerance} onChange={e => changeTolerance(+e.target.value)}/></label><label className="control"><span>纯色比例 <output>{purity}%</output></span><input type="range" min="80" max="100" value={purity} onChange={e => changePurity(+e.target.value)}/></label><label className="control"><span>九宫预留 <output>{reserve}px</output></span><input type="range" min="1" max="30" value={reserve} onChange={e => changeReserve(+e.target.value)}/></label><label className="control"><span>边角保护 <output>{cornerGuard}px</output></span><input type="range" min="0" max="30" value={cornerGuard} onChange={e => changeCornerGuard(+e.target.value)}/></label><button className="secondary" disabled={!items.length || running} onClick={reprocess}><Icon name="spark"/>重新处理全部</button></div>
       <label className={`batch-drop ${dragging ? "dragging" : ""}`} onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={drop}><span className="upload-icon"><Icon name="upload"/></span><span><strong>拖入多张图片</strong><small>或点击批量选择 · PNG / JPG / WEBP</small></span><input type="file" multiple accept="image/png,image/jpeg,image/webp" onChange={pick}/></label>
     </section>
     {items.length > 0 && <section className="queue"><header><div><span className="step">处理队列</span><h2>{items.length} 张图片</h2></div><div className="queue-actions"><button onClick={clear}>清空</button><button className="download-all" disabled={running || !items.some(x => x.status === "done")} onClick={downloadAll}><Icon name="download"/>批量导出</button></div></header><div className="result-grid">{items.map(item => <article className="result-card" key={item.id}><button className="remove" aria-label={`移除 ${item.file.name}`} onClick={() => remove(item.id)}><Icon name="trash"/></button><div className="compare"><figure><img src={item.sourceUrl} alt="原图"/><figcaption>原图</figcaption></figure><span>→</span><figure className="checker">{item.outputUrl ? <img src={item.outputUrl} alt="处理结果"/> : <i>{item.status === "error" ? "处理失败" : "分析中…"}</i>}<figcaption>九宫纹理</figcaption></figure></div><div className="card-meta"><div><strong title={item.file.name}>{item.file.name}</strong><small>{item.original && item.output ? `${item.original} → ${item.output}` : "正在读取像素"}</small></div><button disabled={!item.outputUrl} onClick={() => downloadOne(item)}><Icon name="download"/></button></div></article>)}</div></section>}
