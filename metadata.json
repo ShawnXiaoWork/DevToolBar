@@ -1,5 +1,0 @@
-{
-  "name": "DevToolbox",
-  "description": "A developer utility suite featuring a Timestamp Converter and JSON Formatter. Designed with an extensible architecture for future tools.",
-  "requestFramePermissions": []
-}
