@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, DragEvent, useCallback, useRef, useState } from "react";
+import JSZip from "jszip";
 
 type Mode = "auto" | "fixed-width" | "fixed-height";
 type MirrorX = "none" | "left" | "right";
@@ -92,7 +93,7 @@ const modeCopy: Record<Mode, { title: string; note: string }> = {
 };
 
 export default function Home() {
-  const [items, setItems] = useState<Item[]>([]), [mode, setMode] = useState<Mode>("auto"), [tolerance, setTolerance] = useState(10), [purity, setPurity] = useState(98), [reserve, setReserve] = useState(10), [cornerGuard, setCornerGuard] = useState(10), [mirrorX, setMirrorX] = useState<MirrorX>("none"), [mirrorY, setMirrorY] = useState<MirrorY>("none"), [dragging, setDragging] = useState(false), [running, setRunning] = useState(false);
+  const [items, setItems] = useState<Item[]>([]), [mode, setMode] = useState<Mode>("auto"), [tolerance, setTolerance] = useState(10), [purity, setPurity] = useState(98), [reserve, setReserve] = useState(10), [cornerGuard, setCornerGuard] = useState(10), [mirrorX, setMirrorX] = useState<MirrorX>("none"), [mirrorY, setMirrorY] = useState<MirrorY>("none"), [dragging, setDragging] = useState(false), [running, setRunning] = useState(false), [zipping, setZipping] = useState(false);
   const itemsRef = useRef<Item[]>([]); itemsRef.current = items;
   const reprocessTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -127,7 +128,21 @@ export default function Home() {
   const changeCornerGuard = (next: number) => { setCornerGuard(next); scheduleReprocess(tolerance, purity, reserve, next); };
   const reprocess = () => void processItems(itemsRef.current);
   const downloadOne = (item: Item) => { if (!item.outputUrl) return; const a = document.createElement("a"); a.href = item.outputUrl; a.download = item.file.name; a.click(); };
-  const downloadAll = async () => { for (const item of items.filter(x => x.status === "done")) { downloadOne(item); await new Promise(resolve => setTimeout(resolve, 180)); } };
+  const downloadAll = async () => {
+    const completed = items.filter(x => x.status === "done" && x.outputUrl); if (!completed.length) return;
+    setZipping(true);
+    try {
+      const zip = new JSZip(), used = new Map<string, number>();
+      for (const item of completed) {
+        const count = (used.get(item.file.name) ?? 0) + 1; used.set(item.file.name, count);
+        const dot = item.file.name.lastIndexOf("."), stem = dot > 0 ? item.file.name.slice(0, dot) : item.file.name, extension = dot > 0 ? item.file.name.slice(dot) : "";
+        const name = count === 1 ? item.file.name : `${stem} (${count})${extension}`;
+        zip.file(name, await fetch(item.outputUrl!).then(response => response.blob()));
+      }
+      const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
+      const url = URL.createObjectURL(blob), a = document.createElement("a"); a.href = url; a.download = "nine-slice-results.zip"; a.click(); URL.revokeObjectURL(url);
+    } finally { setZipping(false); }
+  };
   const drop = (e: DragEvent) => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); };
   const pick = (e: ChangeEvent<HTMLInputElement>) => { addFiles(e.target.files ?? []); e.target.value = ""; };
 
@@ -140,8 +155,8 @@ export default function Home() {
       <div className="batch-controls"><label className="control"><span>颜色容差 <output>{tolerance}</output></span><input type="range" min="0" max="40" value={tolerance} onChange={e => changeTolerance(+e.target.value)}/></label><label className="control"><span>纯色比例 <output>{purity}%</output></span><input type="range" min="80" max="100" value={purity} onChange={e => changePurity(+e.target.value)}/></label><label className="control"><span>九宫预留 <output>{reserve}px</output></span><input type="range" min="1" max="30" value={reserve} onChange={e => changeReserve(+e.target.value)}/></label><label className="control"><span>边角保护 <output>{cornerGuard}px</output></span><input type="range" min="0" max="30" value={cornerGuard} onChange={e => changeCornerGuard(+e.target.value)}/></label><button className="secondary" disabled={!items.length || running} onClick={reprocess}><Icon name="spark"/>重新处理全部</button></div>
       <label className={`batch-drop ${dragging ? "dragging" : ""}`} onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={drop}><span className="upload-icon"><Icon name="upload"/></span><span><strong>拖入多张图片</strong><small>或点击批量选择 · PNG / JPG / WEBP</small></span><input type="file" multiple accept="image/png,image/jpeg,image/webp" onChange={pick}/></label>
     </section>
-    {items.length > 0 && <section className="queue"><header><div><span className="step">处理队列</span><h2>{items.length} 张图片</h2></div><div className="queue-actions"><button onClick={clear}>清空</button><button className="download-all" disabled={running || !items.some(x => x.status === "done")} onClick={downloadAll}><Icon name="download"/>批量导出</button></div></header><div className="result-grid">{items.map(item => <article className="result-card" key={item.id}><button className="remove" aria-label={`移除 ${item.file.name}`} onClick={() => remove(item.id)}><Icon name="trash"/></button><div className="compare"><figure><img src={item.sourceUrl} alt="原图"/><figcaption>原图</figcaption></figure><span>→</span><figure className="checker">{item.outputUrl ? <img src={item.outputUrl} alt="处理结果"/> : <i>{item.status === "error" ? "处理失败" : "分析中…"}</i>}<figcaption>九宫纹理</figcaption></figure></div><div className="card-meta"><div><strong title={item.file.name}>{item.file.name}</strong><small>{item.original && item.output ? `${item.original} → ${item.output}` : "正在读取像素"}</small></div><button disabled={!item.outputUrl} onClick={() => downloadOne(item)}><Icon name="download"/></button></div></article>)}</div></section>}
+    {items.length > 0 && <section className="queue"><header><div><span className="step">处理队列</span><h2>{items.length} 张图片</h2></div><div className="queue-actions"><button onClick={clear}>清空</button><button className="download-all" disabled={running || zipping || !items.some(x => x.status === "done")} onClick={downloadAll}><Icon name="download"/>{zipping ? "正在生成 ZIP…" : "下载 ZIP"}</button></div></header><div className="result-grid">{items.map(item => <article className="result-card" key={item.id}><button className="remove" aria-label={`移除 ${item.file.name}`} onClick={() => remove(item.id)}><Icon name="trash"/></button><div className="compare"><figure><img src={item.sourceUrl} alt="原图"/><figcaption>原图</figcaption></figure><span>→</span><figure className="checker">{item.outputUrl ? <img src={item.outputUrl} alt="处理结果"/> : <i>{item.status === "error" ? "处理失败" : "分析中…"}</i>}<figcaption>九宫纹理</figcaption></figure></div><div className="card-meta"><div><strong title={item.file.name}>{item.file.name}</strong><small>{item.original && item.output ? `${item.original} → ${item.output}` : "正在读取像素"}</small></div><button disabled={!item.outputUrl} onClick={() => downloadOne(item)}><Icon name="download"/></button></div></article>)}</div></section>}
     <section className="how"><div><span className="step">镜像说明</span><h2>用完整的一侧，重建另一侧</h2></div><ol><li><b>01</b><span><strong>左右镜像</strong>选择左侧或右侧作为来源，水平翻转到另一边。</span></li><li><b>02</b><span><strong>上下镜像</strong>选择上侧或下侧作为来源，垂直翻转到另一边。</span></li><li><b>03</b><span><strong>四向对称</strong>同时开启两种镜像，可统一四个角与边缘纹理。</span></li></ol></section>
-    <footer><span>角纹 · Nine-slice Trimmer</span><span>无需上传 · 保持原格式与文件名 · 批量处理</span></footer>
+    <footer><span>角纹 · Nine-slice Trimmer</span><span>无需上传 · 保持原格式与文件名 · ZIP 批量下载</span></footer>
   </main>;
 }
