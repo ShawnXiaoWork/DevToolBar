@@ -17,6 +17,9 @@ try {
       windowsHide: true,
     });
     browser.on('error', error => console.error(`自动打开浏览器失败，请手动访问 ${url}`, error));
+  } else if (process.platform === 'darwin') {
+    const browser = spawn('open', [url], { stdio: 'ignore' });
+    browser.on('error', error => console.error(`自动打开浏览器失败，请手动访问 ${url}`, error));
   }
 } catch (error) {
   console.error('启动游戏失败：', error);
