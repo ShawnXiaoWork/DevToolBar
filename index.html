@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#10172e" />
+    <meta name="description" content="支持动态区块、敌人追击和死亡遗物找回的 Three.js 体素星球" />
+    <title>体素星球 · 生存验证关卡</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      if (location.protocol === 'file:') {
+        document.body.style.cssText = 'margin:0;min-height:100vh;display:grid;place-items:center;background:#10172e;color:#f5f7fa;font:16px/1.7 system-ui,sans-serif';
+        document.querySelector('#app').innerHTML = '<main style="max-width:38rem;padding:2rem"><h1>请使用启动脚本打开游戏</h1><p>浏览器直接打开 index.html 时会使用 file://，无法加载 Three.js 模块和动态区块 Worker。</p><p>请双击项目目录中的 <strong>启动游戏.cmd</strong>，脚本会启动本地服务并自动打开浏览器。</p></main>';
+      } else {
+        import('/src/main.js');
+      }
+    </script>
+  </body>
+</html>
