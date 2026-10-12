@@ -20,7 +20,7 @@ export function createInventoryUI(host, player, { onChange, onDrop, onMessage })
         </div>
         <div class="item-details" id="itemDetails"><p>选择一件装备或道具，查看效果与操作。</p></div>
       </div>
-      <div class="backpack-footer">左手举起关闭 · 右手指向并捏合选择 · 靠近地面物品后握拳拾取</div>
+      <div class="backpack-footer">B 关闭 · 点击物品操作 · 靠近地面物品后按 E 拾取</div>
     </div>`;
   host.appendChild(overlay);
   let selected = null;
@@ -91,6 +91,11 @@ export function createInventoryUI(host, player, { onChange, onDrop, onMessage })
     render();
   }
   function toggle() { if (overlay.hidden) open(); else close(); }
+  function setInputMode(mode) {
+    overlay.querySelector('.backpack-footer').textContent = mode === 'motion'
+      ? '左手举起关闭 · 右手指向并捏合选择 · 靠近地面物品后握拳拾取'
+      : 'B 关闭 · 点击物品操作 · 靠近地面物品后按 E 拾取';
+  }
 
   overlay.addEventListener('click', event => {
     const button = event.target.closest('button');
@@ -126,5 +131,5 @@ export function createInventoryUI(host, player, { onChange, onDrop, onMessage })
     render();
   });
 
-  return { open, close, toggle, render, get isOpen() { return !overlay.hidden; } };
+  return { open, close, toggle, render, setInputMode, get isOpen() { return !overlay.hidden; } };
 }

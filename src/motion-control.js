@@ -3,14 +3,16 @@ import { createMotionInterpreter } from './motion-gestures.js';
 const NO_INPUT = Object.freeze({ tracked: false, calibrated: false, mode: 'stop', forward: 0,
   steer: 0, lookX: 0, lookY: 0, zoom: 0, cursor: null, pinch: false, events: [] });
 
-export function createMotionControl(host, { onAction, isMenuOpen }) {
+export function createMotionControl(host, { onAction, isMenuOpen, onRequestComputer }) {
   const interpreter = createMotionInterpreter();
   const overlay = document.createElement('div');
   overlay.className = 'motion-start ui-layer';
+  overlay.hidden = true;
   overlay.innerHTML = `<div class="motion-start-card" role="dialog" aria-label="启动体感操作">
     <div class="motion-star">✦</div><h2>开启体感探索</h2>
     <p>请站在摄像头前，让头部到双脚进入画面。开始后保持站立片刻完成校准。</p>
     <button type="button" class="motion-start-button">开启摄像头</button>
+    <button type="button" class="motion-back-button">返回电脑操作</button>
     <small class="motion-start-status">视频仅在本机识别，不会上传。</small>
   </div>`;
   const dock = document.createElement('div');
@@ -32,6 +34,7 @@ export function createMotionControl(host, { onAction, isMenuOpen }) {
   const hintText = dock.querySelector('#motionHint');
   let worker = null;
   let stream = null;
+  let enabled = false;
   let active = false;
   let busy = false;
   let lastFrameAt = 0;
@@ -121,6 +124,15 @@ export function createMotionControl(host, { onAction, isMenuOpen }) {
     startStatus.textContent = '摄像头已关闭。';
   }
 
+  function enable() {
+    enabled = true;
+    if (!active) {
+      startStatus.textContent = '视频仅在本机识别，不会上传。';
+      overlay.hidden = false;
+    }
+  }
+  function disable() { enabled = false; stop(); overlay.hidden = true; }
+
   async function pump(timestamp) {
     if (!active) return;
     frameRequest = requestAnimationFrame(pump);
@@ -149,14 +161,17 @@ export function createMotionControl(host, { onAction, isMenuOpen }) {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('当前浏览器或页面地址不支持摄像头');
       stream = await navigator.mediaDevices.getUserMedia({ audio: false,
         video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } } });
+      if (!enabled) { stream.getTracks().forEach(track => track.stop()); stream = null; return; }
       video.srcObject = stream;
       await video.play();
+      if (!enabled) { stream?.getTracks().forEach(track => track.stop()); stream = null; video.srcObject = null; return; }
       active = true;
       overlay.hidden = true;
       dock.hidden = false;
       lastFrameAt = 0;
       frameRequest = requestAnimationFrame(pump);
     } catch (error) {
+      if (!enabled) return;
       stop();
       startStatus.textContent = error.name === 'NotAllowedError'
         ? '摄像头访问被拒绝。请在浏览器地址栏允许此站点使用摄像头后重试。'
@@ -166,12 +181,13 @@ export function createMotionControl(host, { onAction, isMenuOpen }) {
   }
 
   function start() {
-    if (active) return;
+    if (!enabled || active || worker) return;
     startButton.disabled = true;
     startStatus.textContent = '正在加载本地识别模型…';
     try {
       worker = new Worker(new URL('./motion-worker.js', import.meta.url), { type: 'module' });
       worker.onmessage = event => {
+        if (!enabled) return;
         if (event.data.type === 'ready') openCamera();
         else if (event.data.type === 'result') processResult(event.data);
         else if (event.data.type === 'error') {
@@ -189,6 +205,7 @@ export function createMotionControl(host, { onAction, isMenuOpen }) {
   }
 
   startButton.addEventListener('click', start);
+  overlay.querySelector('.motion-back-button').addEventListener('click', onRequestComputer);
   dock.addEventListener('click', event => {
     const action = event.target.closest('button')?.dataset.motion;
     if (action === 'stop') stop();
@@ -196,6 +213,6 @@ export function createMotionControl(host, { onAction, isMenuOpen }) {
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden) releaseInput(); });
   window.addEventListener('pagehide', stop);
-  return { start, stop, get state() { return active && !document.hidden && performance.now() - lastResultAt < 500 ? state : NO_INPUT; },
+  return { start, stop, enable, disable, get state() { return active && !document.hidden && performance.now() - lastResultAt < 500 ? state : NO_INPUT; },
     get active() { return active; } };
 }

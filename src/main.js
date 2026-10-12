@@ -10,6 +10,8 @@ import { addItem } from './inventory.js';
 import { createItemWorld, addGroundItem, removeGroundItem, closestGroundItem, updateGroundItems } from './item-world.js';
 import { createInventoryUI } from './inventory-ui.js';
 import { createMotionControl } from './motion-control.js';
+import { resolveInputMode } from './input-config.js';
+import { createEducationSystem } from './education-system.js';
 import './style.css';
 
 const app = document.querySelector('#app');
@@ -24,11 +26,16 @@ app.innerHTML = `
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">✦</span>
         <div>
-          <div class="brand-kicker">THREE.JS / VISUAL STUDY</div>
-          <h1>体素星球 · 生存验证关卡</h1>
+          <div class="brand-kicker">PLANET / KNOWLEDGE QUEST</div>
+          <h1>体素星球 · 知识探险</h1>
         </div>
       </div>
       <div class="top-actions">
+        <button id="educationToggle" class="education-top-button" type="button">✦ 知识探险</button>
+        <div id="inputModeSwitch" class="input-mode-switch" role="group" aria-label="操作模式">
+          <button type="button" data-input-mode="computer" aria-pressed="true">电脑</button>
+          <button type="button" data-input-mode="motion" aria-pressed="false">体感</button>
+        </div>
         <span class="live-pill"><span class="live-dot"></span>实时渲染</span>
         <button id="inventoryToggle" class="icon-button" type="button" title="打开背包" aria-label="打开背包">▣</button>
         <button id="captureBtn" class="icon-button" type="button" title="保存当前画面为 PNG" aria-label="保存截图">↧</button>
@@ -50,10 +57,10 @@ app.innerHTML = `
     <div id="damageFlash" class="damage-flash"></div>
 
     <section class="intro-card ui-layer" aria-label="关卡说明">
-      <div class="eyebrow"><span class="eyebrow-line"></span> ENVIRONMENT STUDY 01</div>
+      <div class="eyebrow"><span class="eyebrow-line"></span> KNOWLEDGE PLANET 01</div>
       <h2>走进一颗<br /><em>方块星球</em></h2>
-      <p>探索动态加载的方块星球。敌人会在警戒范围内追击；角色自动迎击，死亡后回到复活点寻找遗物。</p>
-      <div class="intro-tags"><span>动态区块</span><span>自动战斗</span><span>遗物找回</span></div>
+      <p>寻找三座知识遗迹，完成英语、数学或语文挑战，点亮星球灯塔。敌人仍会追击，角色会自动迎击。</p>
+      <div class="intro-tags"><span>题库探险</span><span>遗迹解谜</span><span>星球修复</span></div>
     </section>
 
     <aside id="controlPanel" class="control-panel ui-layer" aria-label="视觉验证控制台">
@@ -74,7 +81,7 @@ app.innerHTML = `
       </div>
 
       <div class="panel-section">
-        <div class="control-heading"><label for="viewSelect">观察视角</label><span class="control-hint">举起右手旋转</span></div>
+        <div class="control-heading"><label for="viewSelect">观察视角</label><span id="viewHint" class="control-hint">拖动画面旋转</span></div>
         <div class="view-row" id="viewSelect">
           <button class="view-button active" data-view="walk" type="button"><span class="view-icon">◉</span> 漫游</button>
           <button class="view-button" data-view="meadow" type="button"><span class="view-icon">▦</span> 近景</button>
@@ -122,7 +129,7 @@ app.innerHTML = `
     </aside>
 
     <div class="scene-label ui-layer"><span class="scene-label-star">▦</span><span><strong id="sceneTitle">体素旷野</strong><small id="sceneSub">区块 · 海岸 · 晴空</small></span></div>
-    <div class="movement-hint ui-layer"><span>原地踏步行走 · 加快踏步奔跑</span><i></i><span>左手举起开背包 · 右手握拳拾取 · 捏合选择</span></div>
+    <div class="movement-hint ui-layer"><span id="movementMain">W/A/S/D 行走 · Shift 奔跑</span><i></i><span id="movementActions">B 背包 · E 拾取 · Q 治疗</span></div>
     <div id="loading" class="loading-screen"><div class="loading-orbit">✦</div><p>正在点亮星球</p></div>
   </div>
 `;
@@ -161,6 +168,8 @@ const meadowCameraDirection = new THREE.Vector3();
 const meadowTargetDirection = new THREE.Vector3();
 const planetBaseRotation = new THREE.Quaternion();
 const clock = new THREE.Clock();
+const activeKeys = new Set();
+let inputMode = resolveInputMode(window.location.search);
 let timeOfDay = 10.33;
 let orbitYaw = 0.24;
 let orbitPitch = 0.22;
@@ -170,6 +179,11 @@ let view = 'walk';
 let zoomDistance = 3.7;
 let targetZoomDistance = 3.7;
 let lastMotionSample = -1;
+let dragging = false;
+const canvasPointers = new Map();
+let pinchDistance = 0;
+let lastPointerX = 0;
+let lastPointerY = 0;
 let referenceUrl = null;
 let elapsed = 0;
 let walkPhase = 0;
@@ -259,15 +273,62 @@ const inventoryUI = createInventoryUI(experience, player, {
   onDrop: spawnDroppedItem,
   onMessage: showToast,
 });
-document.querySelector('#inventoryToggle').addEventListener('click', () => inventoryUI.toggle());
+const education = createEducationSystem(world.scene, experience, storage, {
+  onToast: showToast,
+  onStageComplete: (index, allComplete) => {
+    player.health = Math.min(player.maxHealth, player.health + 15);
+    showToast(allComplete ? '三座遗迹已修复 · 星球灯塔点亮！' : `第 ${index + 1} 座遗迹已点亮 · 恢复 15 点生命`, 4);
+    saveProgress();
+  },
+  getBearing: direction => dropBearing({ direction }),
+});
+document.querySelector('#educationToggle').addEventListener('click', () => {
+  if (education.isOpen) education.close();
+  else { inventoryUI.close(); education.openSettings(); }
+});
+document.querySelector('#inventoryToggle').addEventListener('click', () => {
+  if (education.isOpen) education.close();
+  inventoryUI.toggle();
+});
 const motionControl = createMotionControl(experience, {
-  isMenuOpen: () => inventoryUI.isOpen,
+  isMenuOpen: () => inventoryUI.isOpen || education.isOpen,
+  onRequestComputer: () => setInputMode('computer'),
   onAction: action => {
-    if (action === 'toggleMenu') inventoryUI.toggle();
-    if (action === 'interact' && !inventoryUI.isOpen) tryInteract();
-    if (action === 'useItem' && !inventoryUI.isOpen) tryUseBerry();
+    if (inputMode !== 'motion') return;
+    if (action === 'toggleMenu' && !education.isOpen) inventoryUI.toggle();
+    if (action === 'interact' && !inventoryUI.isOpen && !education.isOpen) tryInteract();
+    if (action === 'useItem' && !inventoryUI.isOpen && !education.isOpen) tryUseBerry();
   },
 });
+
+function setInputMode(mode, force = false) {
+  if (!['computer', 'motion'].includes(mode) || (!force && mode === inputMode)) return;
+  inputMode = mode;
+  activeKeys.clear();
+  canvasPointers.clear();
+  dragging = false;
+  inventoryUI.close();
+  education.close();
+  inventoryUI.setInputMode(mode);
+  if (mode === 'motion') motionControl.enable();
+  else motionControl.disable();
+  document.querySelectorAll('#inputModeSwitch button').forEach(button => {
+    const selected = button.dataset.inputMode === mode;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+  document.querySelector('#movementMain').textContent = mode === 'motion'
+    ? '原地踏步行走 · 加快踏步奔跑' : 'W/A/S/D 行走 · Shift 奔跑';
+  document.querySelector('#movementActions').textContent = mode === 'motion'
+    ? '左手举起开背包 · 右手握拳拾取 · 捏合选择' : 'B 背包 · E 拾取 · Q 治疗';
+  document.querySelector('#viewHint').textContent = mode === 'motion' ? '举起右手旋转' : '拖动画面旋转';
+  document.querySelector('#useBerryButton').textContent = mode === 'motion' ? '使用浆果' : 'Q · 使用浆果';
+  document.querySelector('#recoverButton').textContent = mode === 'motion' ? '握拳拾回' : 'E · 拾回';
+  document.querySelector('#pickupButton').textContent = mode === 'motion' ? '握拳拾取' : 'E · 拾取';
+}
+document.querySelectorAll('#inputModeSwitch button').forEach(button =>
+  button.addEventListener('click', () => setInputMode(button.dataset.inputMode)));
+setInputMode(inputMode, true);
 
 function onPlayerDeath() {
   const drop = createDeathDrop(player, characterDirection, nextDropId++);
@@ -315,6 +376,7 @@ function tryInteract() {
   const item = closestGroundItem(groundItems, characterDirection);
   if (death?.distance <= 2.8 && (!item || death.distance <= item.distance)) return tryRecoverDrop();
   if (item?.distance <= 2.6) return tryPickupItem();
+  if (education.interact(characterDirection)) { activeKeys.clear(); return true; }
   return false;
 }
 
@@ -379,14 +441,16 @@ document.querySelector('#recoverButton').addEventListener('click', tryRecoverDro
 document.querySelector('#pickupButton').addEventListener('click', tryPickupItem);
 document.querySelector('#useBerryButton').addEventListener('click', tryUseBerry);
 
-function moveCharacter(dt, motion) {
-  const forwardInput = inventoryUI.isOpen ? 0 : motion.forward;
-  if (forwardInput) orbitYaw += motion.steer * dt * 1.4;
+function moveCharacter(dt, input) {
+  const forwardInput = inventoryUI.isOpen || education.isOpen ? 0 : input.forward;
+  const sidewaysInput = inventoryUI.isOpen || education.isOpen ? 0 : (input.sideways ?? 0);
+  if (forwardInput && inputMode === 'motion') orbitYaw += input.steer * dt * 1.4;
   const { north, east } = getTangentFrame(characterDirection);
   const cameraForward = north.multiplyScalar(Math.cos(orbitYaw)).addScaledVector(east, Math.sin(orbitYaw));
-  const targetVelocity = cameraForward.multiplyScalar(forwardInput);
+  const cameraRight = new THREE.Vector3().crossVectors(cameraForward, characterDirection).normalize();
+  const targetVelocity = cameraForward.multiplyScalar(forwardInput).addScaledVector(cameraRight, sidewaysInput);
   if (targetVelocity.lengthSq() > 1) targetVelocity.normalize();
-  const maxSpeed = motion.mode === 'run' ? 6.2 : 2.7;
+  const maxSpeed = input.mode === 'run' ? 6.2 : 2.7;
   targetVelocity.multiplyScalar(maxSpeed);
   characterVelocity.lerp(targetVelocity, 1 - Math.exp(-dt * 13));
   characterVelocity.addScaledVector(characterDirection, -characterVelocity.dot(characterDirection));
@@ -406,8 +470,8 @@ function moveCharacter(dt, motion) {
     world.character.facing.rotation.y += headingDelta * (1 - Math.exp(-dt * 14));
   }
   walkBlend += (Math.min(1, speed / maxSpeed) - walkBlend) * (1 - Math.exp(-dt * 10));
-  if (speed > 0.06) walkPhase += Math.PI * Math.max(1.2, Math.min(3.8, motion.stepRate || 1.2)) * dt;
-  const stride = Math.sin(walkPhase) * (motion.mode === 'run' ? 0.53 : 0.38) * walkBlend;
+  if (speed > 0.06) walkPhase += Math.PI * Math.max(1.2, Math.min(3.8, input.stepRate || (input.mode === 'run' ? 3 : 1.8))) * dt;
+  const stride = Math.sin(walkPhase) * (input.mode === 'run' ? 0.53 : 0.38) * walkBlend;
   world.character.leftLeg.rotation.x = stride;
   world.character.rightLeg.rotation.x = -stride;
   world.character.leftArm.rotation.x = -stride * 0.65;
@@ -609,7 +673,7 @@ function changeZoom(amount) {
 function applyMotionCamera(motion) {
   if (motion.sample === lastMotionSample) return;
   lastMotionSample = motion.sample;
-  if (inventoryUI.isOpen) return;
+  if (inventoryUI.isOpen || education.isOpen) return;
   if (motion.zoom) changeZoom(motion.zoom * 1200);
   const orbitWeight = THREE.MathUtils.smoothstep(zoomDistance, 100, 400);
   orbitYaw -= motion.lookX * 1.1 * (1 - orbitWeight);
@@ -618,17 +682,97 @@ function applyMotionCamera(motion) {
   planetPitch = THREE.MathUtils.clamp(planetPitch + motion.lookY * 1.1 * orbitWeight, -1.15, 1.15);
 }
 
+function computerInput() {
+  const forward = Number(activeKeys.has('KeyW') || activeKeys.has('ArrowUp'))
+    - Number(activeKeys.has('KeyS') || activeKeys.has('ArrowDown'));
+  const sideways = Number(activeKeys.has('KeyD') || activeKeys.has('ArrowRight'))
+    - Number(activeKeys.has('KeyA') || activeKeys.has('ArrowLeft'));
+  const moving = Boolean(forward || sideways);
+  return { forward, sideways, steer: 0, mode: moving
+    ? activeKeys.has('ShiftLeft') || activeKeys.has('ShiftRight') ? 'run' : 'walk' : 'stop' };
+}
+
+function pointerGap() {
+  const [first, second] = [...canvasPointers.values()];
+  return Math.hypot(first.x - second.x, first.y - second.y);
+}
+
+renderer.domElement.addEventListener('pointerdown', event => {
+  if (inputMode !== 'computer') return;
+  canvasPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  renderer.domElement.setPointerCapture(event.pointerId);
+  if (canvasPointers.size === 1) {
+    dragging = true; lastPointerX = event.clientX; lastPointerY = event.clientY;
+  } else { dragging = false; pinchDistance = pointerGap(); }
+});
+renderer.domElement.addEventListener('pointermove', event => {
+  if (inputMode !== 'computer' || !canvasPointers.has(event.pointerId)) return;
+  canvasPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (canvasPointers.size === 2) {
+    const distance = pointerGap();
+    changeZoom(pinchDistance - distance);
+    pinchDistance = distance;
+    return;
+  }
+  if (!dragging) return;
+  const deltaX = event.clientX - lastPointerX;
+  const deltaY = event.clientY - lastPointerY;
+  const orbitWeight = THREE.MathUtils.smoothstep(zoomDistance, 100, 400);
+  orbitYaw += deltaX * 0.005 * (1 - orbitWeight);
+  orbitPitch = THREE.MathUtils.clamp(orbitPitch + deltaY * 0.004 * (1 - orbitWeight), -0.75, 1.15);
+  planetYaw += deltaX * 0.006 * orbitWeight;
+  planetPitch = THREE.MathUtils.clamp(planetPitch + deltaY * 0.005 * orbitWeight, -1.15, 1.15);
+  lastPointerX = event.clientX; lastPointerY = event.clientY;
+});
+function releaseCanvasPointer(event) {
+  canvasPointers.delete(event.pointerId);
+  dragging = canvasPointers.size === 1;
+  if (canvasPointers.size === 2) pinchDistance = pointerGap();
+  if (dragging) {
+    const remaining = canvasPointers.values().next().value;
+    lastPointerX = remaining.x; lastPointerY = remaining.y;
+  }
+}
+renderer.domElement.addEventListener('pointerup', releaseCanvasPointer);
+renderer.domElement.addEventListener('pointercancel', releaseCanvasPointer);
+renderer.domElement.addEventListener('wheel', event => {
+  if (inputMode !== 'computer') return;
+  event.preventDefault();
+  changeZoom(event.deltaY);
+}, { passive: false });
+
+window.addEventListener('keydown', event => {
+  if (inputMode !== 'computer') return;
+  if (event.target instanceof HTMLElement && (event.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName))) return;
+  if (event.code === 'KeyB' && !event.repeat && !event.ctrlKey && !event.metaKey) {
+    if (education.isOpen) return;
+    inventoryUI.toggle(); activeKeys.clear(); event.preventDefault(); return;
+  }
+  if (event.code === 'Escape' && education.isOpen) { education.close(); return; }
+  if (event.code === 'Escape' && inventoryUI.isOpen) { inventoryUI.close(); return; }
+  if (inventoryUI.isOpen || education.isOpen) return;
+  if (/^(KeyW|KeyA|KeyS|KeyD|ArrowUp|ArrowDown|ArrowLeft|ArrowRight)$/.test(event.code)) {
+    activeKeys.add(event.code); event.preventDefault();
+  }
+  if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') activeKeys.add(event.code);
+  if (event.code === 'KeyE' && !event.repeat) tryInteract();
+  if (event.code === 'KeyQ' && !event.repeat) tryUseBerry();
+  if (event.code === 'KeyH' && !event.repeat) experience.classList.toggle('minimal-ui');
+});
+window.addEventListener('keyup', event => activeKeys.delete(event.code));
+window.addEventListener('blur', () => activeKeys.clear());
+
 function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   elapsed += dt;
-  const motion = motionControl.state;
-  applyMotionCamera(motion);
-  moveCharacter(dt, motion);
+  const input = inputMode === 'motion' ? motionControl.state : computerInput();
+  if (inputMode === 'motion') applyMotionCamera(input);
+  moveCharacter(dt, input);
   updateWorld(world, timeOfDay, elapsed);
   updateCamera(dt);
   updateVoxelTerrain(world.voxel, camera, characterDirection, dt);
-  const combatEnabled = zoomDistance < 55 && view !== 'meadow' && !inventoryUI.isOpen
-    && motion.tracked && motion.calibrated;
+  const combatEnabled = zoomDistance < 55 && view !== 'meadow' && !inventoryUI.isOpen && !education.isOpen
+    && (inputMode === 'computer' || (input.tracked && input.calibrated));
   const combatEvents = updateEnemySystem(enemies, player, characterDirection, dt, elapsed, combatEnabled);
   for (const event of combatEvents) {
     if (event.type === 'playerHit') hitUntil = elapsed + .24;
@@ -646,6 +790,7 @@ function animate() {
   if (elapsed < attackUntil) world.character.rightArm.rotation.x = -1.15;
   updateDeathDrops(loot, elapsed, characterDirection);
   updateGroundItems(groundItems, elapsed, characterDirection);
+  education.update(characterDirection, elapsed);
   updateCombatHud();
   saveElapsed += dt;
   if (saveElapsed >= 2) { saveProgress(); saveElapsed = 0; }
